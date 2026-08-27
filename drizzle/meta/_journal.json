@@ -1,5 +1,27 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1787780586958,
+      "tag": "0000_pink_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1787780874432,
+      "tag": "0001_opposite_flatman",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787792798572,
+      "tag": "0002_dizzy_lady_ursula",
+      "breakpoints": true
+    }
+  ]
 }

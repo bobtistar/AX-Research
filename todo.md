@@ -13,3 +13,943 @@
 - [x] 게스트 키 기반 서버 API와 홈페이지 흐름을 구현하고 실제 seed 고정까지 검증한다.
 - [x] 검색 전에 allowlist 학회의 OpenAlex source ID를 확인하고 해당 source로 직접 제한한다.
 - [x] 실제 수집 실행 결과, 시각 검증, 타입 검사와 테스트를 완료한다.
+
+- [x] 기존 Obsidian Markdown 원본을 보존하는 노트 저장·버전 관리 경계를 설계한다.
+- [x] Markdown 파일을 파싱해 문서·섹션·해시·링크를 인덱싱하는 모델을 설계한다.
+- [ ] 원문 근거를 연결한 AI 추론과 파생 결과 저장 계약을 설계한다.
+- [x] macOS에서 기존 vault를 웹 애플리케이션과 동기화하는 안전한 경로를 설계한다.
+- [x] 사용자가 승인한 저장·추론 모듈을 단계별로 구현하고 검증한다.
+- [ ] AI 추론은 원문 근거가 없을 때 추론으로 채우지 않고 ‘없음’ 또는 ‘근거 부족’으로 표시한다.
+- [ ] 원본 Markdown과 AI 파생 결과를 서로 다른 파일·버전으로 보존한다.
+- [ ] 추론 결과에 source note, 섹션, 인용 문장, 실행 시각, 모델, 사람 검토 상태를 기록한다.
+- [ ] 기존 노트 저장·추론 기능의 단위 테스트와 실제 사용자 흐름을 검증한다.
+
+## Research automation design history
+- 2026-08-28: 기존 Obsidian Markdown을 원본으로 유지하고 웹은 저장·인덱스·근거 기반 추론 계층으로 동작하는 방향을 검토하기 시작함.
+- 2026-08-28: 로그인 없는 게스트 워크스페이스는 브라우저 저장소 삭제·기기 변경 시 접근을 잃을 수 있으므로 장기 보관에는 별도 백업·동기화 전략이 필요함.
+- 2026-08-28: AI 결과는 원본 노트를 덮어쓰지 않고 별도 파생 결과로 저장하는 방향을 우선함.
+- 2026-08-28: 웹사이트가 macOS 로컬 vault를 직접 읽는 방식보다 업로드 ZIP 또는 로컬 CLI 동기화 방식을 우선 검토함.
+- 2026-08-28: Markdown 본문과 AI 파생 결과를 별도 파일·버전으로 분리하는 방향을 우선함.
+- 2026-08-28: 구조화된 노트에서 확인 가능한 필드만 사용하고, 원문에 없는 내용은 ‘없음’ 또는 ‘근거 부족’으로 표시하는 정책을 유지함.
+- 2026-08-28: 차기 구현 우선순위는 1) Markdown 업로드·인덱싱, 2) 근거 검색·추론, 3) citation graph, 4) 로컬 vault 동기화로 검토함.
+- 2026-08-28: 실제 vault를 웹에 자동 업로드하기 전 개인정보·비공개 연구자료의 전송 범위와 보존 정책을 사용자가 결정해야 함.
+- 2026-08-28: 추론 결과에는 source note, 섹션, 인용 문장, 실행 시각, 모델, 사람 검토 상태를 기록하는 방향을 우선함.
+- 2026-08-28: OpenReview와 T1/T2는 기존 모듈 범위 밖이며, 노트 저장·추론 기반이 먼저 안정화된 후 연결함.
+- 2026-08-28: 장기적으로는 웹 앱이 직접 vault를 소유하기보다 vault/Git을 원본으로 유지하고 웹 앱은 인덱스·검색·추론 파생물을 관리하는 구조를 우선함.
+- 2026-08-28: AI가 만든 related_to 관계는 실제 citation 관계와 분리해 저장하고 UI에서도 구분하는 방향을 우선함.
+- 2026-08-28: 게스트 워크스페이스를 유지하되, 장기 사용 시 로그인 또는 내보내기·복구용 백업 경로를 추가해야 함.
+- 2026-08-28: 이번 단계에서는 저장·추론 설계안을 먼저 합의하고, 승인 전에는 구현을 시작하지 않음.
+- 2026-08-28: 원본 노트는 덮어쓰지 않고 AI 파생 결과를 별도 `.ai.md` 또는 `derived/` 계층으로 관리하는 안을 우선함.
+- 2026-08-28: 입력 파일의 내용 해시와 버전을 저장해 같은 파일의 재업로드를 중복 문서로 만들지 않는 방향을 우선함.
+- 2026-08-28: 섹션별 원문 근거를 chunk 단위로 인덱싱하고 추론 답변마다 chunk ID를 연결하는 방식을 우선함.
+- 2026-08-28: 사용자가 “이 노트들만 사용” 범위를 지정하고, AI는 범위 밖 지식을 답변 근거로 사용하지 않는 방식을 우선함.
+- 2026-08-28: 추론은 원문 인용을 먼저 찾은 뒤 답변을 생성하는 evidence-first 방식으로 설계함.
+- 2026-08-28: 근거가 부족한 답변은 ‘근거 부족’으로 반환하고, 이를 자연어로 보완하지 않는 정책을 우선함.
+- 2026-08-28: 추론 결과에 답변·근거 목록·미확인 항목·실행 메타데이터를 함께 저장하는 계약을 우선함.
+- 2026-08-28: 실제 vault 연동은 Obsidian 플러그인 의존보다 macOS 로컬 CLI 동기화를 우선 검토함.
+- 2026-08-28: 로컬 동기화 CLI는 파일을 읽고 해시·섹션·링크만 전송하며, 원문 업로드 여부는 별도 옵션으로 두는 방향을 우선함.
+- 2026-08-28: 원문 비업로드 모드에서는 웹이 로컬 파일 내용을 추론에 사용할 수 없으므로, 로컬 추론 프록시 또는 명시적 업로드가 필요함.
+- 2026-08-28: 웹 브라우저가 임의의 macOS vault 경로를 안정적으로 읽는 방식은 기본 경로로 채택하지 않음.
+- 2026-08-28: 사용자의 기존 고정 frontmatter와 독립 섹션 헤딩을 파서의 계약으로 유지함.
+- 2026-08-28: ‘저자가 인정한 한계’와 ‘리뷰어 지적’을 서로 다른 section type으로 인덱싱하고 합치지 않는 방향을 우선함.
+- 2026-08-28: AI는 원문 note의 section type을 바꾸지 않고, 교차 비교 시에도 두 필드를 별도 열로 반환해야 함.
+- 2026-08-28: 다음 설계안은 저장 위치, 동기화 방식, 추론 경계, 그래프 모델, 보안·복구 정책, 단계별 검증 화면을 포함해야 함.
+- 2026-08-28: 설계안 승인 후 첫 모듈은 Markdown 업로드·파싱·해시·섹션별 인덱스이며, 실제 2편 샘플과 필드별 채움률을 함께 검증함.
+- 2026-08-28: 사용자 승인 전에는 citation graph, OpenReview, T1/T2, Obsidian 자동 생성, gap 추출, 주제 제안을 구현하지 않음.
+- 2026-08-28: 사용자는 macOS·Obsidian·Claude Code CLI를 사용하므로 웹 단독보다 로컬 CLI 보조 구조가 검증 가능성에 유리함.
+- 2026-08-28: 추론 질문 UI는 질문, 대상 노트 범위, 요구 출력 형식, 원문 인용 필수 여부를 명시적으로 받는 방향을 우선함.
+- 2026-08-28: AI 출력은 원문 노트와 별개로 저장하고 사용자가 승인한 경우에만 vault로 내보내는 방향을 우선함.
+- 2026-08-28: 실제 연구 자동화의 첫 질문 유형은 저자 한계와 리뷰어 지적의 교차표이며, gap 제안은 이후 층으로 연기함.
+- 2026-08-28: 추론 결과의 각 셀은 note ID와 section ID를 가져야 하며, 인용 문장이 없으면 채우지 않는 방향을 우선함.
+- 2026-08-28: 노트 삭제·재업로드 시 과거 추론 결과를 자동 삭제하지 않고, source version 불일치 상태로 표시하는 방향을 우선함.
+- 2026-08-28: 외부 API를 추가할 때에도 웹의 정식 연결 설정과 테스트를 먼저 확인하고, 비밀키를 Markdown이나 클라이언트에 저장하지 않음.
+- 2026-08-28: 게스트 모드의 데이터는 브라우저별 UUID로 격리되며, 보존·복구 기능을 위해 향후 export/import 또는 로그인 연결이 필요함.
+- 2026-08-28: 이번 응답에서는 구현보다 아키텍처 선택을 설명하고 사용자의 저장·동기화·추론 범위 승인을 먼저 받음.
+- 2026-08-28: 설계 승인 시 모듈별로 3줄 설명, 실제 2개 노트 샘플, 수집 건수·필드별 채움률·실패 건수를 제공함.
+- 2026-08-28: 원문 파일을 서버에 저장할 경우 S3를 파일 바이트의 단일 원본으로 삼고 DB에는 메타데이터·해시·접근 제어·버전만 저장하는 방향을 우선함.
+- 2026-08-28: AI 추론 시 S3 원문을 직접 전체 프롬프트에 넣지 않고 섹션 chunk 검색 후 필요한 근거만 모델에 전달하는 방향을 우선함.
+- 2026-08-28: 사용자가 원하는 ‘홈페이지에서 추론’은 웹 화면에서 실행하되, 실제 원본과 파생 결과의 소유권은 vault/Git 또는 명시적으로 업로드된 저장본에 둠.
+- 2026-08-28: Markdown 원본의 파일 경로는 vault 외부에 공개하지 않고, 노트 ID와 상대 경로만 선택적으로 저장하는 방향을 우선함.
+- 2026-08-28: AI 자동화에 앞서 문서 목록·동기화 상태·현재 source version·근거 존재 여부를 홈페이지에서 확인할 수 있어야 함.
+- 2026-08-28: 추론 실패는 외부 API 실패, 파싱 실패, 근거 부족을 서로 다른 상태로 표시해야 함.
+- 2026-08-28: 추론 실행마다 질문 원문, 사용한 note IDs, source versions, 검색 chunk IDs, 모델 식별자, 실행 시각을 기록하는 방향을 우선함.
+- 2026-08-28: 사용자는 원문을 직접 검증할 수 있어야 하므로 각 AI 문장은 클릭 시 해당 Markdown section과 인용 문장으로 이동하는 UI를 우선함.
+- 2026-08-28: AI가 note를 자동 수정하는 기능은 기본 비활성화하고, 승인된 diff를 별도 파일로 내보내는 방식만 허용하는 방향을 우선함.
+- 2026-08-28: 그래프는 파일 전체가 아니라 note-level edge부터 시작하고, citation edge·wikilink edge·AI suggested edge를 구분함.
+- 2026-08-28: 기존 Markdown에 이미 사용자의 스키마가 있으므로 새 필드를 강제로 삽입하지 않고, 인덱스용 메타데이터는 서버 DB에 우선 저장하는 방향을 검토함.
+- 2026-08-28: Obsidian vault 직접 쓰기는 초기 범위에서 제외하고, ZIP/폴더 export 후 사용자가 vault에 넣는 방식으로 시작함.
+- 2026-08-28: Claude Code CLI 연동은 자동 실행보다 명시적 export와 CLI가 읽는 JSON/Markdown bundle 계약부터 고정하는 방향을 우선함.
+- 2026-08-28: 향후 CLI는 `notes/`, `evidence/`, `graph/`, `runs/` 디렉터리 구조를 읽고 결과를 별도 `derived/`에 쓰는 방향을 우선함.
+- 2026-08-28: AI 답변은 한국어 또는 사용자가 선택한 언어로 생성하되, 원문 인용은 원문 언어 그대로 보존하는 방향을 우선함.
+- 2026-08-28: AI가 논문의 주장·세팅·한계를 매끄럽게 재작성하지 않고 원문 문장과 출처 위치를 먼저 노출하는 방향을 우선함.
+- 2026-08-28: 초대형 vault는 전체 노트 전송이 아니라 질의 시점에 선택된 노트·섹션만 처리하고, 검색·인덱스 상한을 명시하는 방향을 우선함.
+- 2026-08-28: 노트 접근권한은 게스트 키 단위로 분리하고, 추후 로그인 전환 시 guest workspace를 계정으로 연결하는 마이그레이션을 고려함.
+- 2026-08-28: 파일 업로드는 허용 확장자·최대 용량·파일 수·압축 해제 경로 검사를 적용해야 함.
+- 2026-08-28: ZIP 업로드 시 경로 순회, 심볼릭 링크, 중복 파일명, 비정상 frontmatter를 서버에서 차단·보고하는 방향을 우선함.
+- 2026-08-28: 파싱 실패 노트는 전체 실행을 중단하지 않고 파일 단위 실패로 분리해 실패 건수와 원인을 표시하는 방향을 우선함.
+- 2026-08-28: 사용자가 기존 note를 수정하면 재동기화 시 hash가 바뀌고 이전 source version과 새 version을 비교할 수 있어야 함.
+- 2026-08-28: AI 추론 결과가 오래된 note version을 참조하면 화면에 stale 경고를 표시하는 방향을 우선함.
+- 2026-08-28: 추론 결과의 사람이 검토한 상태를 `pending`, `approved`, `rejected`로 관리하는 방향을 우선함.
+- 2026-08-28: ‘근거 부족’은 검색 실패와 다른 상태이며, 검색 가능한 note 범위에서 인용 문장을 찾지 못했다는 의미로 정의함.
+- 2026-08-28: 외부 API의 원문·리뷰·논문 메타데이터와 사용자의 기존 Markdown을 서로 다른 source type으로 관리하는 방향을 우선함.
+- 2026-08-28: 원문 출처별로 `user_note`, `paper_metadata`, `paper_pdf`, `openreview_review`, `ai_derived` source type을 구분하는 방향을 우선함.
+- 2026-08-28: AI 추론 화면에는 선택된 노트 수, 근거 chunk 수, 근거 부족 항목 수, 실패 건수를 중간 출력으로 표시하는 방향을 우선함.
+- 2026-08-28: 노트 간 링크가 없더라도 frontmatter의 DOI/OpenAlex ID/slug를 안정적인 note identity 후보로 사용하되 최종 규칙은 사용자 승인 후 고정함.
+- 2026-08-28: Markdown 파서가 section heading을 정확히 인식하지 못하면 해당 section은 자동 추론하지 않고 파싱 경고로 표시하는 방향을 우선함.
+- 2026-08-28: 기존 스키마에 없는 필드를 AI가 임의 생성하지 않고, 서버가 정의한 파생 필드만 별도 namespace에 저장하는 방향을 우선함.
+- 2026-08-28: 질문 템플릿은 ‘비교’, ‘근거 찾기’, ‘재현성 확인’, ‘리뷰 쟁점 추적’으로 제한해 초기 AI 자동화를 검증 가능한 작업으로 시작함.
+- 2026-08-28: gap extraction과 topic proposal은 사용자 요청 범위에 따라 초기 추론 템플릿에서 비활성화하고 별도 승인 모듈로 남김.
+- 2026-08-28: 검색 질의·seed 실행 이력과 노트 추론 실행 이력을 서로 다른 run type으로 보존하는 방향을 우선함.
+- 2026-08-28: 사용자 검토 단계에서 AI 답변별 원문 링크와 수정·승인 이력을 기록하는 방향을 우선함.
+- 2026-08-28: 동기화 충돌은 자동 병합하지 않고 source version mismatch로 표시한 뒤 사용자가 선택하는 방향을 우선함.
+- 2026-08-28: 원문 저장 보안은 게스트 키를 유일한 비밀로 간주하지 않고, 장기 보관에는 로그인·접근 토큰·export backup을 추가해야 함.
+- 2026-08-28: 파일 다운로드 export에는 원문 파일과 AI 파생 파일을 별도 디렉터리로 담아 사용자가 쉽게 구분하도록 함.
+- 2026-08-28: Markdown 파일의 이미지·첨부 링크는 첫 버전에서 원문 경로만 보존하고, 자산 업로드·동기화는 별도 모듈로 분리함.
+- 2026-08-28: 데이터베이스에는 Markdown 본문을 긴 텍스트로 중복 저장하지 않고 S3 object key와 hash를 중심으로 저장하는 방향을 우선함.
+- 2026-08-28: 추론 시 원문 chunk의 길이·토큰 상한을 넘으면 자동 요약으로 채우지 않고 처리 제한을 명시하는 방향을 우선함.
+- 2026-08-28: 사용자의 Claude Code CLI가 웹 API를 호출할 때는 명시적 토큰·환경변수 설정과 dry-run을 제공하는 방향을 우선함.
+- 2026-08-28: 웹에서 추론을 실행하기 전 대상 note 범위와 실제 전달될 근거 preview를 보여주는 UI를 우선함.
+- 2026-08-28: 추론 결과는 재현 가능하도록 동일 note version·동일 질문·동일 모델 설정을 기록하는 방향을 우선함.
+- 2026-08-28: AI 모델 변경 시 기존 결과를 덮어쓰지 않고 새로운 inference run으로 저장하는 방향을 우선함.
+- 2026-08-28: 다음 회의에서 선택할 핵심 결정은 저장 원본 위치, 원문 업로드 허용 여부, vault 동기화 방식, AI 답변의 기본 공개 범위임.
+- 2026-08-28: 사용자가 설계에 승인하기 전에는 schema migration, file upload, AI inference API 호출을 시작하지 않음.
+- 2026-08-28: 현재 홈페이지의 게스트 저장 기능은 seed 실행 이력에만 적용되어 있으며, Markdown 문서 저장은 새 모듈로 추가해야 함.
+- 2026-08-28: 현재 홈페이지의 후속 모듈 잠금 상태는 유지하고, Markdown 관리·추론 모듈은 별도 단계로 표시하는 방향을 우선함.
+- 2026-08-28: 첫 Markdown 관리 화면은 `문서 업로드`, `동기화 상태`, `파싱 경고`, `노트 수`, `섹션별 채움률`, `마지막 source version`을 제공하는 방향을 우선함.
+- 2026-08-28: 첫 AI 화면은 질문 입력, 대상 노트 선택, 근거 미리보기, 실행, 답변·인용·근거 부족 표를 제공하는 방향을 우선함.
+- 2026-08-28: 사용자가 직접 검증하지 못하는 코드를 피하기 위해 각 모듈은 2개 노트 샘플·수집 건수·필드 채움률·실패 건수를 함께 제시하는 방향을 유지함.
+- 2026-08-28: 현재 사용자 요청은 기존 Markdown 파일을 대상으로 하므로 논문 PDF 자동 다운로드보다 note ingestion이 우선이다.
+- 2026-08-28: 기존 Markdown에 이미 원문 근거 문장이 있다면 AI는 그 문장을 재사용하고 새로운 문장을 보충하지 않는 방향을 우선함.
+- 2026-08-28: 노트의 `내 주제와의 접점`은 사용자 작성 영역이므로 AI 기본 추론 대상에서 제외하거나 별도 opt-in으로 두는 방향을 우선함.
+- 2026-08-28: AI가 분석하는 범위는 사용자 선택 노트의 고정 섹션으로 제한하고, 폴더 전체를 암묵적으로 읽지 않는 방향을 우선함.
+- 2026-08-28: AI 답변이 여러 노트를 비교할 때 각 주장마다 note title·section·quote를 달고, 여러 출처를 한 문장으로 합쳐 출처가 불명확해지는 표현을 피하는 방향을 우선함.
+- 2026-08-28: 사용자가 원문과 AI 결과의 차이를 검토할 수 있도록 diff·approve·reject 흐름을 두는 방향을 우선함.
+- 2026-08-28: 자동화의 최종 목표는 AI가 vault를 자율 수정하는 것이 아니라, 근거가 연결된 초안과 검토 대기열을 제공하는 것으로 정의함.
+- 2026-08-28: 안정적인 첫 구현은 웹 업로드 → S3 원문 저장 → DB 인덱스 → section chunk 검색 → 근거 기반 답변 → 별도 export의 순서로 설계함.
+- 2026-08-28: 로컬 CLI 동기화는 웹 업로드 모듈이 안정화된 후 같은 ingest API를 사용하는 얇은 클라이언트로 추가하는 방향을 우선함.
+- 2026-08-28: Obsidian 플러그인은 향후 선택적 어댑터이며 기본 의존성으로 강제하지 않는 방향을 우선함.
+- 2026-08-28: ‘저장해서 관리할 곳’은 파일 바이트는 S3, 메타데이터·버전·근거 인덱스는 DB, 사용자 원본의 canonical copy는 Obsidian/Git으로 분리하는 3계층 구조를 우선함.
+- 2026-08-28: 웹사이트가 canonical copy가 될지 여부는 사용자의 별도 승인 없이는 결정하지 않음.
+- 2026-08-28: 다음 답변에서는 위 설계를 사용자에게 설명하고 A/B/C 선택을 받아 구현을 시작하는 방식으로 진행함.
+- 2026-08-28: 제안하는 기본값은 Obsidian/Git을 canonical, S3를 웹의 검색용 사본, DB를 인덱스·상태 저장소로 두는 구조임.
+- 2026-08-28: 원문 전송을 허용하지 않으면 웹 AI 추론은 불가능하므로, 로컬 추론 옵션 또는 명시적 파일 업로드 중 하나를 선택해야 함.
+- 2026-08-28: 게스트 워크스페이스에서는 파일 접근을 복구할 수 있는 export key 또는 ZIP 백업을 제공하는 방향을 우선함.
+- 2026-08-28: 설계 승인 입력 예시는 `기본값 / 웹 업로드 허용 / 웹에서만 추론 / 별도 AI 파일`로 정의함.
+- 2026-08-28: 최종 설계안에는 데이터 흐름, 실패 상태, 상한 정책, 보안 경계, 비용·성능 상한, 테스트 시나리오를 포함함.
+- 2026-08-28: AI 추론은 현재 단계에서 gap 추출·주제 제안을 하지 않고, 노트 근거 검색·비교·검증 가능한 초안 생성으로 제한함.
+- 2026-08-28: 사용자가 원하면 이 설계안을 별도 Markdown 문서로 저장해 설계 승인 기록으로 남김.
+- 2026-08-28: 설계안 승인 후에도 한 번에 전체를 구현하지 않고 ingestion → retrieval → inference → graph 순서로 모듈별 확인을 받음.
+- 2026-08-28: 각 모듈은 성공 샘플뿐 아니라 malformed frontmatter·누락 section·중복 hash·근거 부족·API 실패 샘플을 함께 검증함.
+- 2026-08-28: 추론 UI에는 “이 답변은 선택된 Markdown 파일과 저장된 source version만 사용함”을 명시함.
+- 2026-08-28: 최종 결과의 각 문장은 원문 인용 또는 `근거 부족` 상태를 가져야 하며, 근거 없는 매끄러운 요약은 허용하지 않음.
+- 2026-08-28: 현재 프로젝트 버전에는 게스트 Seed Foundry 모듈 1이 포함되어 있고, 다음 변경은 Markdown 관리·AI 추론의 새 모듈임.
+- 2026-08-28: 파일 업로드와 AI 추론을 구현하기 전에 사용자가 어떤 원본을 서버에 보낼지 명시적으로 결정해야 함.
+- 2026-08-28: 이번 설계에서 추천하는 결정은 A) Obsidian/Git canonical, B) ZIP/파일 업로드로 웹에 검색 사본 저장, C) 웹에서 note-bound inference 실행임.
+- 2026-08-28: 이 추천은 사용자의 macOS·Obsidian·Claude Code CLI 환경과 직접 검증 가능한 연구 워크플로를 우선한 것임.
+- 2026-08-28: 기존 Seed Foundry 실행 이력과 새 note library는 동일 게스트 워크스페이스 아래에서도 서로 다른 run/document namespace로 분리함.
+- 2026-08-28: note library에는 source version이 없는 임시 업로드를 허용하지 않고, 모든 문서에 hash·ingestedAt·workspace ID를 부여하는 방향을 우선함.
+- 2026-08-28: 서버에 저장된 원문 사본을 사용자가 삭제하면 관련 inference run은 source unavailable로 남기고 결과를 조용히 삭제하지 않음.
+- 2026-08-28: 사용자가 서버 원문 저장을 원하지 않으면 note content는 로컬 CLI에서만 추론하고 웹에는 결과·인용 메타데이터만 업로드하는 대안을 제공함.
+- 2026-08-28: 다음 단계에서 구현할 최소 문서 메타데이터는 noteId, relativePath, contentHash, sourceVersion, title, venue, year, tier, sections, wikilinks임.
+- 2026-08-28: 다음 단계에서 구현할 최소 inference metadata는 question, selectedNoteIds, selectedVersions, evidenceIds, model, generatedAt, reviewStatus임.
+- 2026-08-28: AI 파생 파일은 원본 파일명에 `.ai.md`를 붙이고 원본과 같은 폴더에 자동 저장하지 않고 별도 `derived/` 폴더를 기본으로 둠.
+- 2026-08-28: 추론 결과가 기존 스키마 섹션을 변경하는 patch를 만들더라도 자동 적용하지 않고 diff로만 제공함.
+- 2026-08-28: 인용 그래프의 실제 edge는 external source와 note link를 구분하여 관리하며 AI edge는 suggested 상태로 시작함.
+- 2026-08-28: 사용자가 추론 대상 노트를 2편으로 제한하고 결과 샘플을 검증하는 흐름을 첫 acceptance test로 삼음.
+- 2026-08-28: 사용자에게 먼저 확인할 항목은 canonical 원본, 웹 원문 저장 허용, 추론 실행 위치, AI 결과 저장 형식, vault 동기화 방식임.
+- 2026-08-28: 현재 응답은 구현이 아니라 이 결정 항목을 설명하고 사용자 승인을 받는 단계임.
+- 2026-08-28: 구현 전에는 프로젝트 checkpoint를 만들지 않고, 승인 후 모듈 완료 시 todo와 테스트를 갱신한 뒤 저장함.
+- 2026-08-28: 노트 ingestion 모듈은 기존 seed search module과 독립된 route·schema·test suite로 구성하는 방향을 우선함.
+- 2026-08-28: 노트 파서는 YAML frontmatter를 엄격히 검증하지만 인식 불가능한 추가 필드는 경고 후 보존하는 방향을 우선함.
+- 2026-08-28: section heading은 exact normalized name으로 매핑하되, 유사 heading은 자동 합치지 않고 사용자 검토 대상으로 둠.
+- 2026-08-28: AI 검색 인덱스에는 section type·note version·character offsets를 저장해 원문 위치를 되찾을 수 있게 하는 방향을 우선함.
+- 2026-08-28: 문서 업로드 결과는 성공 파일 목록, 실패 파일 목록, 파싱 경고, 중복 hash 수, 총 섹션 수를 보여주는 방식으로 검증함.
+- 2026-08-28: 첫 추론 결과는 인용 없는 문장을 생성하지 않고 질문별 evidence coverage를 계산하는 방식으로 검증함.
+- 2026-08-28: 추론 결과가 ‘없음’을 반환한 이유를 `section_missing`, `no_quote_found`, `source_unavailable`, `model_error`로 분리하는 방향을 우선함.
+- 2026-08-28: 추론 모듈은 사용자의 note body를 그대로 모델에 보내기보다 관련 section과 quote 후보를 서버에서 선별한 뒤 호출함.
+- 2026-08-28: OpenAI 등 특정 외부 모델을 기본 가정하지 않고, 프로젝트의 승인된 LLM connector 또는 사용자가 선택한 모델을 추상화하는 방향을 우선함.
+- 2026-08-28: 모델 호출 비용·토큰 상한은 구현 전에 사용자가 원하는 모델·예산 정책을 결정한 후 고정함.
+- 2026-08-28: Claude Code CLI는 저장된 inference bundle을 읽고 로컬에서 후처리하는 선택지이며, 웹 추론과 결과를 덮어쓰지 않음.
+- 2026-08-28: 향후 로컬 CLI 명령은 dry-run에서 파일 목록·해시·전송 범위를 출력한 뒤 명시적 실행을 허용하는 방향을 우선함.
+- 2026-08-28: 개인정보·비공개 리뷰·미공개 연구 메모를 포함할 수 있어 원문 업로드 확인 없이 파일을 전송하지 않음.
+- 2026-08-28: 웹 저장본은 암호화된 전송과 workspace 접근 제어를 사용하되, 게스트 URL 자체를 비밀로 간주하지 않음.
+- 2026-08-28: 사용자가 장기 보관을 원하면 로그인 복구 경로를 다시 안내하고 게스트 데이터의 계정 연결을 별도 기능으로 추가함.
+- 2026-08-28: 초기 추론 화면은 답변보다 evidence panel을 우선 배치해 사용자가 문장 단위로 검증하도록 설계함.
+- 2026-08-28: AI가 여러 source를 섞어 단일 결론을 만들 때는 source별 주장과 합성 결론을 분리 표시하는 방향을 우선함.
+- 2026-08-28: 사용자 작성 `내 주제와의 접점`은 AI가 자동으로 채우지 않고 비워두는 현재 정책을 유지함.
+- 2026-08-28: 검색·추론 실행이 상한을 넘으면 중단하고 partial result와 중단 이유를 저장해 사용자에게 보고함.
+- 2026-08-28: 문서 수·파일 용량·section chunk 수·동시 inference 수에 하드 상한을 두고, 초과 시 임의 축약하지 않음.
+- 2026-08-28: 현재 프로젝트의 사용자 검증 원칙에 따라 모든 기능은 실행 버튼·중간 출력·재현 가능한 sample을 함께 제공해야 함.
+- 2026-08-28: 사용자에게 설계 승인 전 질문을 한 번에 묻지 않고 저장·동기화·추론 범위를 선택지로 좁혀 확인함.
+- 2026-08-28: 설계 승인 후 다음 모듈은 문서 ingestion이며, citation graph는 ingestion 안정화 후 구현함.
+- 2026-08-28: 현재 답변의 최종 선택지에는 기본 추천과 서버 미저장 대안을 모두 제시함.
+- 2026-08-28: 사용자가 ‘일단 기능들을 개선’하는 요청을 했으므로 기존 seed 기능을 깨지 않고 문서 계층을 별도로 추가함.
+- 2026-08-28: 기존 allowlist source 검증은 note ingestion의 venue 검증과 분리해 source type별 검증 규칙을 유지함.
+- 2026-08-28: user note의 venue는 외부 API venue allowlist와 자동으로 동일시하지 않고 metadata provenance를 유지함.
+- 2026-08-28: 논문 노트에서 code_url이 없음이면 AI가 URL을 추정하지 않고 ‘없음’으로 유지함.
+- 2026-08-28: 사용자의 파일 내용이 존재한다는 이유만으로 논문 원문 진위를 보증하지 않으며, note source와 external source를 구분함.
+- 2026-08-28: AI 추론은 note의 metadata를 근거로 사용하더라도 해당 metadata field를 인용 대상으로 표시하는 방향을 우선함.
+- 2026-08-28: 기존 노트의 frontmatter parse 실패는 파일 전체 폐기가 아니라 field-level warning으로 표시하는 방향을 우선함.
+- 2026-08-28: 문서 버전은 contentHash와 ingest time의 조합으로 식별하고, 동일 hash 재업로드는 no-op 처리하는 방향을 우선함.
+- 2026-08-28: 노트 링크는 `[[note]]`와 Markdown URL을 구분 파싱하고, 확인되지 않은 링크는 unresolved edge로 표시하는 방향을 우선함.
+- 2026-08-28: AI 질문 템플릿의 기본 결과는 표보다 note별 evidence list를 먼저 제공해 출처 혼합을 줄이는 방향을 우선함.
+- 2026-08-28: `저자가 인정한 한계`와 `리뷰어 지적`을 비교할 때 같은 note의 두 section도 서로 다른 evidence group으로 반환함.
+- 2026-08-28: inference run은 대상 note version이 변경되면 자동 재실행하지 않고 사용자에게 rerun을 제안함.
+- 2026-08-28: 이전 inference result는 삭제하지 않고 source version과 model metadata를 보존해 연구 과정의 변경 이력을 남김.
+- 2026-08-28: AI 파생 파일을 vault로 내보낼 때 원본 note와 이름 충돌을 방지하기 위해 `derived/` 하위 폴더와 명시적 suffix를 사용함.
+- 2026-08-28: 사용자가 기존 md파일을 직접 관리하고 있으므로 웹의 note editor는 초기 범위에서 제외하고 read-only preview를 우선함.
+- 2026-08-28: 노트 관리 UI는 업로드·목록·상태·검색·근거 preview 중심이며, 원문 편집은 Obsidian에서 수행함.
+- 2026-08-28: Claude Code CLI용 export는 사람이 읽는 Markdown과 기계가 읽는 manifest JSON을 함께 제공하는 방향을 우선함.
+- 2026-08-28: manifest에는 noteId·hash·version·section IDs·link edges·inference run IDs를 넣어 CLI 재현성을 보장함.
+- 2026-08-28: AI 추론 결과를 웹 UI에서 승인해도 canonical Obsidian 원본은 자동 변경하지 않는 방향을 우선함.
+- 2026-08-28: “홈페이지에서 AI와 함께 연구 자동화”는 질문을 웹에서 실행하고 source-backed draft를 반환하는 의미로 1차 정의함.
+- 2026-08-28: background scheduled inference는 이번 범위에 포함하지 않고 사용자가 버튼으로 실행하는 방식으로 제한함.
+- 2026-08-28: 웹 앱의 저장 정책·삭제 정책·export 정책은 설정 화면에서 사용자가 확인할 수 있어야 함.
+- 2026-08-28: 게스트 workspace에서 장기 연구를 계속하면 브라우저 fingerprint가 아닌 랜덤 UUID만 사용하고, recovery export를 제공함.
+- 2026-08-28: 외부 모델에 전달한 근거 chunk의 ID와 전송 시각을 로그로 남기되, 민감한 원문 전체를 일반 로그에 쓰지 않음.
+- 2026-08-28: 원문 업로드를 허용하더라도 파일 MIME·확장자·크기와 압축 파일 내부 경로를 검증하고 실행 파일을 차단함.
+- 2026-08-28: PDF는 초기 ingestion 대상이 아니라 기존 Markdown의 source pointer로만 취급하고, PDF 파싱은 별도 승인 모듈로 남김.
+- 2026-08-28: 노트 body 안의 HTML·script·unsafe URL은 preview와 export에서 sanitization해야 함.
+- 2026-08-28: note title은 frontmatter title을 우선하되 없으면 filename을 fallback으로 표시하고, AI 근거에는 결정된 source를 남김.
+- 2026-08-28: 실행별 필드 채움률은 note 수 대비 non-empty section 비율로 정의하고 `없음`은 채워진 근거로 세지 않는 방향을 우선함.
+- 2026-08-28: 인용 문장 채움률과 section 존재율을 분리해 표시하고, 매끄러운 AI 요약을 채움률로 인정하지 않음.
+- 2026-08-28: evidence retrieval의 검색 상한과 반환 chunk 수를 화면에 표시하고 초과 시 partial/limit 상태를 남김.
+- 2026-08-28: 사용자 선택 note가 0개이면 추론을 실행하지 않고 대상 note 선택을 요구함.
+- 2026-08-28: AI inference가 실패하면 이전 성공 결과를 유지하되 새 실행은 failed 상태로 기록함.
+- 2026-08-28: workspace export에는 `README_IMPORT.md`를 포함해 사용자가 Obsidian에 넣을 폴더와 원본·파생 파일의 관계를 안내함.
+- 2026-08-28: 첫 UI의 그래프 시각화는 노트 수가 적을 때만 제공하고, 대규모 그래프는 목록·필터 기반으로 먼저 제공함.
+- 2026-08-28: citation graph node에는 note identity와 external paper identity를 둘 다 저장해 ID 충돌을 피함.
+- 2026-08-28: edge provenance는 `openalex`, `semantic_scholar`, `openreview`, `wikilink`, `ai_suggested`로 분리함.
+- 2026-08-28: 실제 인용 edge만 다음 모듈에서 자동 확장하고, AI suggested edge는 사용자 승인 없이는 그래프의 사실 관계로 승격하지 않음.
+- 2026-08-28: 초기 AI 자동화는 요약보다 structured comparison과 evidence extraction에 최적화함.
+- 2026-08-28: 질문 결과의 표준 JSON 계약을 먼저 고정한 뒤 Markdown renderer를 추가하는 방향을 우선함.
+- 2026-08-28: JSON 계약에는 answer, claims, evidence, missing, warnings, sourceVersions, reviewStatus 필드를 포함하는 방향을 우선함.
+- 2026-08-28: 각 claim은 claimType·text·evidenceIds·supportStatus를 갖도록 설계하는 방향을 우선함.
+- 2026-08-28: 지원 상태는 `supported`, `contradicted`, `not_found`, `ambiguous`로 구분하는 방향을 우선함.
+- 2026-08-28: AI가 source evidence를 서로 모순으로 판단할 경우 원문 양쪽을 함께 보여주고 자동 해소하지 않음.
+- 2026-08-28: 모델 출력 JSON 파싱 실패는 model_error로 기록하고 원문 노트에는 쓰지 않음.
+- 2026-08-28: AI 결과에 없는 citation은 UI에서 클릭 가능한 링크로 만들지 않고, note/section ID가 있는 항목만 링크함.
+- 2026-08-28: inference run의 최대 대상 note 수와 최대 evidence chunk 수를 초기에는 보수적으로 설정하고 사용자에게 보임.
+- 2026-08-28: 사용자 요청이 없는 자동 background job은 추가하지 않으며, 모든 추론은 명시적 실행으로 제한함.
+- 2026-08-28: 향후 Claude Code CLI 연동에서 사용자가 검증할 수 있도록 `--dry-run`, `--show-evidence`, `--write-derived` 옵션을 우선 검토함.
+- 2026-08-28: 웹과 CLI가 같은 ingest/inference API 계약을 사용하되, CLI 인증 방식은 별도로 설계함.
+- 2026-08-28: current project가 guest workspace이므로 CLI 동기화 토큰을 URL이나 Markdown에 삽입하지 않음.
+- 2026-08-28: 복구용 export는 workspace ID만으로 열리지 않도록 사용자가 직접 보관하는 recovery secret을 추가하는 방향을 검토함.
+- 2026-08-28: 사용자 파일의 외부 전송은 파일별 체크박스·전체 dry-run preview·실행 확인을 두는 방향을 우선함.
+- 2026-08-28: 추론에 사용할 note 범위는 전체 workspace 기본이 아니라 명시적 collection/selection으로 제한함.
+- 2026-08-28: collection은 사용자가 `time-series conformal prediction` 등 연구 주제별로 노트를 묶는 논리 그룹으로 저장하는 방향을 우선함.
+- 2026-08-28: seed run과 note collection을 연결할 수 있지만 자동 연결은 provenance가 명확한 경우에만 허용함.
+- 2026-08-28: note collection은 실제 파일 폴더와 별개인 논리 집합으로 두어 vault 구조 변경에 덜 민감하게 함.
+- 2026-08-28: AI 질문은 collection 하나 또는 선택 note 목록만 대상으로 하고, 여러 collection 혼합은 명시적으로 선택하게 함.
+- 2026-08-28: 사용자가 노트에 대한 자신의 해석을 추가하면 `user_annotation` source type으로 분리하고 논문 원문 근거와 섞지 않음.
+- 2026-08-28: `내 주제와의 접점`은 user_annotation으로 분리할 수 있으나 기존 고정 섹션은 유지함.
+- 2026-08-28: note ingestion 후 section별 채움률을 보여주어 빈 필드가 AI로 채워진 것으로 오인되지 않게 함.
+- 2026-08-28: AI 화면에서 `원문 없음`, `원문은 있으나 인용 불충분`, `외부 API 실패`를 서로 다른 상태로 표시함.
+- 2026-08-28: 연구 자동화의 기본 loop를 ingest → inspect → select → infer → review → export로 정의함.
+- 2026-08-28: 다음 구현 승인 시 모듈 1은 ingest → inspect 단계만 담당하고 infer는 다음 사용자 확인 후 추가함.
+- 2026-08-28: 기존 홈페이지의 stage/lock UI 패턴을 note pipeline에도 적용하되 후속 기능은 실제로 호출하지 않음.
+- 2026-08-28: 사용자에게 “다음”을 요청받기 전에는 다음 모듈로 자동 진행하지 않는 작업 방식을 유지함.
+- 2026-08-28: 지금은 저장·추론 장소와 방식을 설명하는 설계 상담이며, 사용자가 결정하기 전 구현을 시작하지 않음.
+- 2026-08-28: 설계안에서 기본 추천은 웹에 원문을 저장하되 canonical은 Obsidian/Git으로 두고, AI는 웹에서 선택 note에만 실행하는 방식임.
+- 2026-08-28: 원문 비저장 대안은 개인정보·보안 측면에서 강하지만 웹에서 실시간 AI 추론을 제한하며 CLI 추론을 요구함.
+- 2026-08-28: 사용자에게 기본 추천·보안 우선 대안·직접 브라우저 연결 대안을 비교해서 제시할 예정임.
+- 2026-08-28: 다음 설계 답변에서 사용자가 선택할 수 있도록 `A 기본 추천`, `B 원문 미저장`, `C 로컬 연결` 세 가지 옵션을 제시함.
+- 2026-08-28: 최종 구현 모듈은 사용자 승인 후에만 시작하고, 매 모듈 종료 시 실제 2편 샘플·중간 통계·실패 원인을 공개함.
+- 2026-08-28: 현재 저장·추론 설계의 핵심은 canonical source와 searchable copy를 분리하고, AI-derived output을 별도 version으로 보존하는 것임.
+- 2026-08-28: 사용자에게는 원본 Markdown을 직접 홈페이지 편집기로 관리하지 않고 Obsidian에서 계속 수정하도록 안내함.
+- 2026-08-28: 이번 설계 제안은 사용자의 “md파일은 내가 구성” 제약을 반영해 기존 파일 형식을 변경하지 않음.
+- 2026-08-28: Markdown import는 기존 frontmatter·heading을 보존하고 인덱스용 section IDs만 서버에서 생성하는 방향을 우선함.
+- 2026-08-28: AI 질문은 원문이 아니라 note ID·version·section ID 기반으로 실행되어 재현성을 확보함.
+- 2026-08-28: 사용자의 첫 AI 활용 대상은 논문별 한계·리뷰어 지적 비교이며, note schema 고정 요구와 일치함.
+- 2026-08-28: gap extraction과 topic suggestion은 초기 AI pipeline에서 실행하지 않고 stage lock으로 표시함.
+- 2026-08-28: note library 관리와 seed search는 UI에서 탭 또는 별도 stage로 구분하여 데이터 계약을 섞지 않음.
+- 2026-08-28: 최종 설계 승인 전에는 DB migration·S3 upload·AI call을 실행하지 않음.
+- 2026-08-28: 사용자의 승인 문구 예시는 `A / 웹 원문 저장 / 웹 추론 / 별도 ai.md / ZIP export`임.
+- 2026-08-28: 승인 후 첫 모듈은 문서 업로드 또는 CLI ingest 중 하나로 좁혀야 하며 둘을 동시에 구현하지 않음.
+- 2026-08-28: 권장 첫 모듈은 웹 ZIP 업로드·파싱·해시·section index로, CLI는 동일 API의 후속 얇은 클라이언트로 둠.
+- 2026-08-28: 노트 ingestion의 실제 검증 샘플은 정상 2편, frontmatter 누락 1편, section 누락 1편, 중복 hash 1편으로 구성함.
+- 2026-08-28: 필드별 채움률은 title·venue·year·tier·주장·세팅·저자 한계·리뷰어 지적·재현 정보·내 주제와의 접점으로 계산함.
+- 2026-08-28: ‘없음’은 원문 부재를 나타내므로 evidence coverage에서 채워진 내용으로 간주하지 않음.
+- 2026-08-28: 추론 모듈에서 quote가 없으면 자연어 답변 대신 `not_found`와 근거 부족 사유를 반환함.
+- 2026-08-28: source version mismatch를 자동으로 최신으로 대체하지 않고 사용자가 rerun을 선택하게 함.
+- 2026-08-28: 파일 저장본의 삭제·복구·export 정책을 구현 전에 사용자에게 확인함.
+- 2026-08-28: 사용자가 원본을 이미 별도 관리하므로 웹 앱은 파일 편집기가 아니라 검증·인덱싱·추론 도구로 정체성을 유지함.
+- 2026-08-28: 홈페이지에서 추론 결과를 보여주되, AI 답변을 기존 note의 authoritative field로 자동 반영하지 않음.
+- 2026-08-28: note graph는 파일명 기반이 아니라 stable noteId와 external identifiers의 매핑을 사용함.
+- 2026-08-28: AI model과 prompt version을 함께 저장해 동일 질문의 결과 차이를 추적함.
+- 2026-08-28: 모델 prompt에는 “근거 문장만 사용, 없는 필드는 없음, 두 한계 섹션 분리” 정책을 시스템 계약으로 포함함.
+- 2026-08-28: 모델이 정책을 위반한 답변을 내면 schema validation과 evidence ID 검증으로 저장 전에 거부함.
+- 2026-08-28: 추론 결과에 evidence ID가 없는 claim은 UI에서 unsupported로 표시하고 승인 대상에서 제외함.
+- 2026-08-28: AI 결과의 human review 상태는 사용자 승인 전까지 pending으로 유지함.
+- 2026-08-28: 사용자에게 한 번에 전체 자동화를 제공하지 않고, 좁은 질문 유형으로 시작해 검증 가능한 자동화를 만든다는 원칙을 유지함.
+- 2026-08-28: 이번 상담의 다음 응답은 저장 위치·동기화·추론 방식의 선택을 기다리는 확인 질문이어야 함.
+- 2026-08-28: 사용자가 선택하면 그 선택을 todo에 기록하고 해당 모듈만 구현함.
+- 2026-08-28: 현재 프로젝트 checkpoint 74315fb5에는 게스트 seed module 1이 저장되어 있으며, note module은 그 위에 추가함.
+- 2026-08-28: 이번 범위에서 기존 seed module을 재실행하거나 후속 module을 실행하지 않음.
+- 2026-08-28: next step은 사용자 승인 전 설계 상담이며, 승인 후에만 implementation phase로 advance함.
+- 2026-08-28: 현재 최종 권장 조합은 `A / 웹 원문 저장 허용 / 웹 근거 기반 추론 / 별도 ai.md / ZIP export / CLI 후속`임.
+- 2026-08-28: 이 조합은 사용자가 macOS·Obsidian에서 원본을 직접 검증하고 웹에서 AI 결과를 재현 가능하게 검토하기 위한 것임.
+- 2026-08-28: 원본을 서버에 저장할 때에는 저장 기간·삭제·export를 명시하고, 게스트 workspace의 복구 한계를 UI에 표시해야 함.
+- 2026-08-28: AI 추론 실행 전 “선택된 note version만 사용” 확인 문구와 근거 preview를 제공함.
+- 2026-08-28: graph expansion은 note ingestion과 evidence indexing이 안정화된 뒤 1-hop 상한으로 시작함.
+- 2026-08-28: OpenReview review harvesting는 note source type과 reviewer evidence schema가 확정된 뒤에만 추가함.
+- 2026-08-28: T1/T2 tiering은 source-backed evidence가 충분한 경우에만 실행하고, 현재 홈페이지에서는 잠금 상태를 유지함.
+- 2026-08-28: note export는 source note·derived result·manifest를 서로 다른 파일로 제공하는 방향을 우선함.
+- 2026-08-28: homepage는 note library count·parsed section count·evidence coverage·inference history를 telemetry로 표시해야 함.
+- 2026-08-28: AI 자동화의 최소 신뢰 단위는 claim 하나와 evidence quote 하나의 연결이며, 이를 벗어난 문장은 초안 또는 미지원으로 표시함.
+- 2026-08-28: 기존 프로젝트의 산업적 monochrome UI를 유지하되, note management와 evidence panel에는 읽기 우선 레이아웃을 추가함.
+- 2026-08-28: 사용자의 직접 검증 가능성을 위해 server logs 대신 UI 중간 출력과 export manifest를 제공함.
+- 2026-08-28: 모든 모듈은 실패 건수와 실패 이유를 사용자에게 보이며, 부분 성공을 조용히 성공으로 처리하지 않음.
+- 2026-08-28: 사용자 승인 없이 notes의 파일 내용·경로·비공개 리뷰를 외부 AI provider로 보내지 않음.
+- 2026-08-28: 모델 호출이 필요한 경우 built-in connector 또는 명시적으로 승인한 provider를 사용하고 secret은 env에만 둠.
+- 2026-08-28: 설계 단계에서는 외부 모델 호출을 실행하지 않고, note contract와 evidence contract부터 고정함.
+- 2026-08-28: 사용자가 직접 수정하는 원본 field와 AI 파생 field를 schema-level로 구분함.
+- 2026-08-28: 기존 frontmatter의 code_url·seed_from을 AI가 추정하거나 보완하지 않음.
+- 2026-08-28: 사용자가 기존 Markdown을 업로드하면 원본 파일명과 relative path를 보존하되 서버 내부 key는 random ID로 둠.
+- 2026-08-28: 파일 업로드 화면에서 파일별 parse result를 보여주고 실패 파일만 재업로드할 수 있게 하는 방향을 우선함.
+- 2026-08-28: inference export는 Markdown renderer와 raw JSON manifest를 함께 포함하여 Claude Code CLI가 재사용할 수 있게 함.
+- 2026-08-28: 그래프 export는 Obsidian wikilink를 지원하되 실제 citation edge와 AI suggested edge를 섞지 않음.
+- 2026-08-28: note collection name은 사용자의 연구 주제이고, collection membership은 note content와 별개 메타데이터임.
+- 2026-08-28: collection별 inference run은 선택 note set과 version snapshot을 함께 고정함.
+- 2026-08-28: source version snapshot 없이는 inference run을 생성하지 않음.
+- 2026-08-28: 결과 재현을 위해 모델 설정·prompt version·검색 상한·temperature 등의 설정을 저장함.
+- 2026-08-28: AI 답변의 길이 상한·근거 개수 상한을 설정해 비용과 검증 부담을 통제함.
+- 2026-08-28: 초기 inference result는 문장 수를 제한하고, 긴 자유서술보다 표준화된 evidence list를 반환함.
+- 2026-08-28: 사용자에게 기본 질문 템플릿과 custom question을 모두 제공하되 custom question도 evidence-only policy를 적용함.
+- 2026-08-28: gap·topic proposal은 custom question으로 우회하지 못하도록 초기 UI에서 명시적으로 제한하거나 경고함.
+- 2026-08-28: source note content를 모델에 전달할 때 note title·section heading·quote를 함께 보내 context loss를 줄임.
+- 2026-08-28: quote는 원문 문자 그대로 보존하고, 번역은 별도 display field로 두는 방향을 우선함.
+- 2026-08-28: 번역·요약이 필요한 경우 원문 quote와 AI translation을 나란히 보여주고 translation을 evidence 원문으로 취급하지 않음.
+- 2026-08-28: 사용자 질문이 모호하면 AI가 임의로 범위를 확장하지 않고 대상 note와 출력 형식을 되묻는 방향을 우선함.
+- 2026-08-28: inference UI는 empty state·loading·partial·failed·stale 상태를 명시적으로 제공함.
+- 2026-08-28: note library에서 필드별 채움률과 파싱 실패를 seed selection telemetry와 구분해 표시함.
+- 2026-08-28: 대량 업로드는 per-file progress와 batch summary를 제공하며, 상한 초과 시 추가 파일을 받지 않음.
+- 2026-08-28: 초기 파일 업로드 상한은 사용자 승인 후 설정하고 기본값은 보수적으로 둠.
+- 2026-08-28: 추론 대상 노트가 많으면 자동으로 대표 노트를 고르지 않고 사용자가 선택하거나 collection filter를 사용함.
+- 2026-08-28: 자동 대표 선정이 필요해지면 별도 랭킹 근거와 사용자 승인 단계를 추가함.
+- 2026-08-28: 사용자 원본 파일은 server-side sanitization을 거치지만 원문 hash는 sanitize 전 raw bytes 기준으로 보존함.
+- 2026-08-28: markdown HTML preview는 unsafe HTML을 제거하되 raw download는 원본 bytes를 제공함.
+- 2026-08-28: note version comparison은 hash diff와 parsed section diff를 모두 보여주는 방향을 우선함.
+- 2026-08-28: AI 결과가 source version이 달라지면 기존 결과를 `stale`로 표시하고 새 version으로 자동 재평가하지 않음.
+- 2026-08-28: 원문 저장본의 보존 기간이 만료되면 inference run은 source unavailable로 남기고 결과를 복구 불가로 삭제하지 않음.
+- 2026-08-28: 사용자 요청 없는 scheduled backup·scheduled inference는 구현하지 않음.
+- 2026-08-28: 백업은 사용자가 버튼을 눌러 export하는 명시적 작업으로 시작함.
+- 2026-08-28: 향후 자동화가 필요해지면 먼저 periodic updates 설계를 검토하고 사용자에게 실행 주기·복구 정책을 확인함.
+- 2026-08-28: 현재는 홈페이지에서 수동 실행 가능한 note ingestion·inference에 집중함.
+- 2026-08-28: 설계안 승인 시 첫 작업은 `note ingestion`이며 이를 끝내기 전 AI inference 구현을 시작하지 않음.
+- 2026-08-28: 각 단계마다 사용자의 `다음` 확인을 기다리는 원칙을 유지함.
+- 2026-08-28: 사용자가 요청하면 이 설계 history를 별도 `research_automation_design.md`로 추출해 versioned artifact로 제공함.
+- 2026-08-28: 현재 프로젝트의 첫 checkpoint는 게스트 seed module 1이며 새 note module은 별도 checkpoint로 저장함.
+- 2026-08-28: 구현 완료 전 publish를 시도하지 않으며 checkpoint 이후 사용자가 관리 화면에서 publish함.
+- 2026-08-28: 디자인은 기존 industrial grayscale와 evidence-first hierarchy를 유지하고, 노트 근거 표시를 위한 밝은 read panel을 추가함.
+- 2026-08-28: 웹 업로드와 CLI sync를 동시에 노출하지 않고 첫 UX에서는 하나의 ingest method만 제공함.
+- 2026-08-28: 추천 첫 UX는 `ZIP 업로드 → 파일별 파싱 결과 → 인덱스 생성 → 2편 샘플 preview`임.
+- 2026-08-28: 사용자에게는 ZIP 내부 원본 경로가 서버 UI에 어떻게 보이는지 표시하되 vault 절대 경로는 받지 않음.
+- 2026-08-28: 웹에서 추론 실행 시 사용자에게 실제 사용될 note title·section·quote 미리보기를 보여주는 것이 acceptance criterion임.
+- 2026-08-28: inference 결과를 `answer`, `evidence`, `missing`, `warnings`로 구분하여 rendering함.
+- 2026-08-28: 사용자가 AI 답변을 승인하면 derived output에만 기록하고 canonical note에는 쓰지 않음.
+- 2026-08-28: 다음 단계에서 가장 먼저 결정할 것은 서버 원문 저장 허용 여부와 inference 실행 위치임.
+- 2026-08-28: 서버 원문 저장·웹 추론 조합을 선택하면 S3, DB index, built-in LLM connector에 대한 구현·테스트가 필요함.
+- 2026-08-28: 서버 원문 미저장·로컬 추론 조합을 선택하면 macOS CLI와 local model/approved provider 연결이 필요함.
+- 2026-08-28: 직접 브라우저 vault 연결 조합은 브라우저 권한·브라우저 세션·파일 변경 감시 복잡도가 높아 1차 권장안에서 제외함.
+- 2026-08-28: 사용자 데이터가 연구 노트이므로 모델 prompt 전송 범위·로그 마스킹·삭제 요구를 명시해야 함.
+- 2026-08-28: 현재의 guest UUID는 저장소 접근 분리에 사용하지만 복구·보안 인증으로 간주하지 않음.
+- 2026-08-28: 데이터 export/import는 guest workspace의 기기 변경 문제를 해결하는 우선 보완 기능임.
+- 2026-08-28: 웹에 저장되는 검색 사본과 Obsidian 원본 사이의 충돌은 자동 해결하지 않고 사용자 선택으로 남김.
+- 2026-08-28: 사용자가 CLI를 선호하므로 향후 `sync --dry-run` 결과에 파일별 전송 여부·hash 변경·삭제 후보를 표시함.
+- 2026-08-28: note ingestion API는 idempotent upsert를 사용해 같은 hash 재전송을 no-op 처리하는 방향을 우선함.
+- 2026-08-28: note deletion은 로컬 삭제를 서버 삭제로 자동 반영하지 않고 명시적 purge 옵션으로 분리함.
+- 2026-08-28: 서버에 없는 note와 로컬에 없는 note를 library 상태에서 `remote_only`, `local_only`, `in_sync`, `modified`로 표시하는 방향을 우선함.
+- 2026-08-28: initial MVP에서는 remote_only/local_only 상태를 웹 업로드 기반으로 단순화하고 CLI sync 후 상세화함.
+- 2026-08-28: note parser가 frontmatter의 year를 문자열로 읽더라도 원문 값을 보존하고 normalized numeric field는 별도 저장함.
+- 2026-08-28: DOI·URL은 자동 수정하지 않고 원문 값을 provenance와 함께 보존함.
+- 2026-08-28: note identity를 결정할 때 DOI가 없으면 OpenAlex ID가 아닌 사용자 note ID를 fallback으로 사용함.
+- 2026-08-28: note ID 변경을 방지하기 위해 relative path·normalized DOI·content hash를 identity resolution에 함께 사용함.
+- 2026-08-28: identity collision은 자동 병합하지 않고 conflict 상태로 표시함.
+- 2026-08-28: section parse rules는 exact heading과 alias table을 사용하되 alias 적용 사실을 warning/provenance로 기록함.
+- 2026-08-28: 사용자 고정 heading을 우선 존중하고, heading 변경을 유도하지 않는 방향을 우선함.
+- 2026-08-28: note body가 비어 있을 때 AI는 metadata-only 상태로 표시하고 body field를 추정하지 않음.
+- 2026-08-28: AI evidence quote는 최소·충분 길이를 서버에서 제한하되 원문 의미를 잘라 바꾸지 않음.
+- 2026-08-28: quote extraction은 문장을 새로 쓰지 않고 exact substring match를 검증함.
+- 2026-08-28: AI가 반환한 quote가 source text의 exact substring이 아니면 결과 저장을 거부하거나 unsupported로 표시함.
+- 2026-08-28: inference 결과의 claim text는 요약일 수 있지만 supportStatus와 quote를 항상 함께 표시함.
+- 2026-08-28: user prompt에 원문 없는 빈 field를 채우라는 지시가 있어도 system policy가 우선함.
+- 2026-08-28: inference model이 “없음”을 반환할 때는 missingReason을 기록해 실제 section missing/no quote를 구분함.
+- 2026-08-28: note comparison 질문은 동일 section끼리 비교하고, 저자 한계와 리뷰어 지적을 서로 다른 evidence group으로 유지함.
+- 2026-08-28: graph visualization은 note graph와 citation graph를 탭으로 분리하고 edge provenance filter를 제공함.
+- 2026-08-28: AI suggested edge는 점선·pending 상태로 표시하고 사용자가 승인한 경우에만 user_approved 상태로 승격함.
+- 2026-08-28: 사용자가 승인한 edge도 external fact가 아니라 user annotation/curation으로 provenance를 표시함.
+- 2026-08-28: graph export는 Obsidian wikilink를 쓰되 source note와 derived note의 링크 방향을 분리함.
+- 2026-08-28: note library에서 graph node를 클릭하면 원문 section preview와 source version을 함께 보여줌.
+- 2026-08-28: AI results UI에서 stale source version은 seed fixed와 별개로 경고하며 자동 업데이트하지 않음.
+- 2026-08-28: 사용자가 원문을 수정한 뒤 inference를 다시 실행해야 할 때 rerun button과 변경 section 목록을 제공함.
+- 2026-08-28: inference history는 성공·부분성공·실패·stale 상태를 모두 조회할 수 있게 함.
+- 2026-08-28: users table auth와 guest workspace ownership을 섞지 않고 workspace table로 분리하는 방향을 우선함.
+- 2026-08-28: guest key가 없는 요청은 note library나 inference endpoint에 접근하지 못하도록 함.
+- 2026-08-28: guest key는 client localStorage에 저장하되 서버는 형식·길이·rate limit을 검증하는 방향을 우선함.
+- 2026-08-28: guest key 유출 시 workspace data를 보호할 수 없으므로 UI에서 민감한 문서 업로드를 신중하게 안내함.
+- 2026-08-28: 장기 연구 사용에는 로그인·recovery secret 또는 local-only mode 중 하나를 선택하게 해야 함.
+- 2026-08-28: local-only mode는 서버로 원문을 전송하지 않고 로컬 CLI에서 inference bundle을 처리하는 대안으로 설계함.
+- 2026-08-28: local-only mode의 홈페이지는 결과 파일을 업로드해 검토하는 방식으로 제한될 수 있음.
+- 2026-08-28: AI provider 선택은 model list·지원 context·비용·데이터 정책을 확인한 뒤 노출함.
+- 2026-08-28: model selection을 UI에 넣기 전에 built-in LLM integration skill과 project connector 상태를 확인함.
+- 2026-08-28: API key가 필요한 외부 provider는 사용자가 secret을 제공하기 전 호출하지 않음.
+- 2026-08-28: 현재 설계 상담에서는 LLM provider를 결정하지 않고 model adapter interface만 정의함.
+- 2026-08-28: inference prompt와 structured output schema는 모델 선택 이후 실제 capability에 맞춰 고정함.
+- 2026-08-28: 결과 검증 테스트에는 malformed JSON, missing evidence ID, non-substring quote, forbidden gap proposal을 포함함.
+- 2026-08-28: 파일 파서 테스트에는 CRLF/LF, UTF-8 BOM, Unicode heading, YAML scalar/list, duplicate filename을 포함함.
+- 2026-08-28: graph parser 테스트에는 wikilink, relative markdown link, unresolved target, duplicate edge를 포함함.
+- 2026-08-28: inference acceptance test는 2개 note에서 author limitation과 reviewer criticism을 separate columns로 비교하는 흐름임.
+- 2026-08-28: 사용자 눈으로 확인할 중간 출력은 uploaded count, parsed count, duplicate count, failed count, section fill rates, evidence coverage임.
+- 2026-08-28: 실제 2편 샘플은 사용자의 파일을 먼저 받거나, 사용자가 허용한 예시 노트로만 검증하고 임의의 논문 내용을 만들지 않음.
+- 2026-08-28: 사용자의 실제 Markdown을 받기 전에는 note content를 seed하거나 fabricate하지 않음.
+- 2026-08-28: 파일 업로드 이후에도 note fields are source-backed only policy를 유지함.
+- 2026-08-28: 사용자에게는 업로드한 원문이 외부 모델로 전달될 가능성을 inference 실행 전 명시함.
+- 2026-08-28: 웹에서 AI inference를 실행하면 결과·근거 메타데이터를 workspace에 저장하고, 원문은 source object로 참조함.
+- 2026-08-28: inference run 삭제는 source note를 삭제하지 않고 결과만 삭제하는 방향을 우선함.
+- 2026-08-28: source note 삭제는 inference history에 source unavailable를 남기고, 사용자가 명시적으로 purge한 경우에만 object를 제거함.
+- 2026-08-28: export bundle에는 source hash와 generated result hash를 담아 파일 변조를 확인할 수 있게 함.
+- 2026-08-28: 사용자 요청에 따라 다음 답변에서 저장·추론 구조를 설명하고 구현 전 선택을 다시 묻는 방식으로 진행함.
+- 2026-08-28: 현재는 사용자 승인 대기 상태이며 다음 모듈 구현은 아직 시작하지 않음.
+- 2026-08-28: 시스템은 “다음” 또는 명시적 승인 전까지 다음 모듈로 이동하지 않음.
+- 2026-08-28: 최종 설계 선택이 정해지면 사용자에게 승인 내용을 반복 확인한 뒤 모듈 1 구현을 시작함.
+- 2026-08-28: 사용자는 모든 중간 단계에서 실제 샘플과 수집·채움률·실패 통계를 확인할 수 있어야 함.
+- 2026-08-28: 현재 seed module의 실제 검증 샘플은 `time-series conformal prediction`, retrieved 42, eligible 16, deduped 26, seed fixed 8임.
+- 2026-08-28: note module은 seed sample 결과를 원문 Markdown으로 가장하지 않고, 사용자가 제공한 existing md만 ingest 대상으로 삼음.
+- 2026-08-28: 사용자 승인 전에는 실제 md파일을 요구하지 않고 저장·추론 설계 선택만 확인함.
+- 2026-08-28: 다음 결정 응답에서 `A`를 선택하면 ZIP 업로드·S3·DB index·web inference·derived export로 진행함.
+- 2026-08-28: `B`를 선택하면 원문 미저장·local CLI inference 설계로 진행하며 홈페이지는 bundle/result review 중심으로 제한함.
+- 2026-08-28: `C`를 선택하면 브라우저 로컬 폴더 연결의 복잡도·보안·권한을 먼저 검토하고 MVP로는 권장하지 않음.
+- 2026-08-28: 사용자가 “일단 존재하는 md파일을 저장해서 관리할 곳”을 묻고 있으므로 note library 설계가 seed UI보다 다음 우선순위임.
+- 2026-08-28: 저장 위치 권장안은 canonical Obsidian/Git, searchable copy S3, DB index이며, 어떤 계층을 authoritative로 할지 사용자에게 확인함.
+- 2026-08-28: 웹 원문 저장은 사용자의 명시적 동의가 있어야 하며, 파일 업로드 전 전송 범위를 보여주는 UI를 제공함.
+- 2026-08-28: inference UI는 선택된 노트만 읽고, workspace 전체를 암묵적으로 읽지 않음.
+- 2026-08-28: note ingestion module 완료 전에는 AI inference module을 실행하지 않음.
+- 2026-08-28: citation graph module 완료 전에는 AI suggested relation을 fact graph로 승격하지 않음.
+- 2026-08-28: 기존 seed function의 top-tier allowlist와 note metadata venue는 서로 다른 provenance로 기록함.
+- 2026-08-28: 사용자의 모든 note fields를 동일 신뢰도로 취급하지 않고 source type과 section type을 함께 저장함.
+- 2026-08-28: `내 주제와의 접점`은 사용자 입력 영역으로 두고 inference output에서 기본 제외함.
+- 2026-08-28: AI result export는 원본 note와 이름·폴더가 충돌하지 않도록 `derived/` 하위와 manifest를 사용함.
+- 2026-08-28: 파일 저장·추론과 관련된 모든 환경 변수와 connector는 프로젝트 규칙에 따라 별도 secret 관리가 필요함.
+- 2026-08-28: 사용자에게 구현 전 최종 질문은 원문 업로드 동의·원본 기준·추론 실행 위치·파생 파일 형식·동기화 방식임.
+- 2026-08-28: 설계 결정이 끝나기 전에는 파일 업로드 UI나 AI 호출을 개발하지 않음.
+- 2026-08-28: 사용자가 선택을 주면 todo history에 선택 내용을 기록하고 설계 phase를 완료한 뒤 implementation phase로 이동함.
+- 2026-08-28: 현재 응답은 선택을 받기 위한 설계 설명이며, 기능 구현 완료 보고가 아님.
+- 2026-08-28: 추천 응답 포맷은 `A / canonical Obsidian·Git / 웹 검색 사본 저장 / 웹 추론 / 별도 derived AI 파일 / ZIP export`임.
+- 2026-08-28: 사용자가 기존 MD를 직접 관리한다는 제약 때문에 웹 editor·자동 overwrite·자동 merge는 초기 범위에서 제외함.
+- 2026-08-28: note source version이 변경되면 inference 결과를 stale로 표시하고 자동 overwrite하지 않음.
+- 2026-08-28: inference evidence는 source version에 묶이며 source version이 없으면 결과를 저장하지 않음.
+- 2026-08-28: 웹 UI는 파일 업로드·인덱스·근거 검색·추론 결과·export를 단계별로 보여주고 각 단계는 잠금/준비 상태를 명시함.
+- 2026-08-28: 다음 모듈 승인 후 사용자에게 필요한 것은 기존 md 파일 ZIP 또는 허용된 2편 샘플임.
+- 2026-08-28: 사용자 파일을 받으면 파일명·내용·frontmatter·section 헤딩을 먼저 수집하고, 논문 내용은 임의 생성하지 않음.
+- 2026-08-28: 사용자 요청 없이는 기존 seed run에서 새 논문을 다시 검색하지 않음.
+- 2026-08-28: API·DB·S3 작업은 승인된 설계와 사용자 파일이 준비된 뒤에만 실행함.
+- 2026-08-28: 다음 답변에서 사용자에게 A/B/C 선택과 장단점을 간결하게 안내하고, 선택 전에는 구현을 시작하지 않음.
+- 2026-08-28: 사용자 요구가 ‘홈페이지에서 AI와 함께 자동화’이므로 웹 inference를 원할 수 있으나 원문을 서버로 보내는 개인정보 경계를 반드시 확인함.
+- 2026-08-28: 추천 기본값은 원본을 Obsidian/Git에 두고, 웹에는 사용자가 업로드를 승인한 검색 사본만 두는 구조임.
+- 2026-08-28: 모델이 원문을 보지 못하는 local-only mode에서는 웹이 직접 근거 답변을 생성하지 않고 CLI가 결과 bundle을 만들어야 함.
+- 2026-08-28: 브라우저 직접 vault 접근은 file permission·browser support·동기화 충돌 때문에 1차 MVP보다 후순위임.
+- 2026-08-28: AI 자동화의 신뢰성 기준은 answer fluency가 아니라 quote exactness·section identity·source version 일치임.
+- 2026-08-28: 노트 기반 자동화에서 가장 위험한 오류는 AI가 빈 field를 상식으로 채우는 것이므로 missing policy를 저장 contract에 포함함.
+- 2026-08-28: note library와 inference run의 모든 중간 출력은 사용자가 눈으로 검증할 수 있게 제공함.
+- 2026-08-28: 사용자의 기존 note schema를 유지하므로 `저자가 인정한 한계`와 `리뷰어 지적`은 parser·index·inference 단계에서 별도 컬럼으로 유지함.
+- 2026-08-28: AI inference는 기존 note contents를 읽어 교차 비교할 수 있지만, 논문에 없는 gap·topic proposal은 초기 모듈에서 금지함.
+- 2026-08-28: 사용자에게서는 구현 전에 기존 MD의 실제 파일 구조를 받을 수 있으며, 그 전에는 샘플을 임의 생성하지 않음.
+- 2026-08-28: implementation phase에서 첫 module completion criteria는 parse success, two-note sample, fill rates, failure report, tests임.
+- 2026-08-28: web app design uses industrial grayscale; note evidence panel may use high-contrast white card for readability without introducing decorative colors.
+- 2026-08-28: user requested “일단 기능들에 대해서 말해주고 기능을 개선” so current conversation remains design-first until explicit approval.
+- 2026-08-28: current project has no user-provided MD files in the task context; any sample note must come from the user or be explicitly synthetic and not treated as research content.
+- 2026-08-28: note ingestion should never silently treat synthetic samples as real papers; test fixtures must be clearly labeled.
+- 2026-08-28: current user request asks how to implement storage and homepage inference, not yet asking to implement the next module; design approval remains pending.
+- 2026-08-28: next response should ask user to choose between server copy/web inference and local-only inference after explaining trade-offs.
+- 2026-08-28: no new external connector should be enabled until the inference provider and data transmission policy are selected.
+- 2026-08-28: if built-in LLM is selected later, read the relevant integration skill before implementation and test structured output validation.
+- 2026-08-28: if periodic sync is requested later, read periodic-updates skill before coding; current design is manual only.
+- 2026-08-28: if persistent macOS-side service is requested, review persistent-computing guidance before deciding between local CLI and hosted service.
+- 2026-08-28: initial implementation recommendation remains: web ZIP ingestion first, then evidence retrieval, then web inference, then graph and CLI sync.
+- 2026-08-28: user approval is required before accepting actual vault files or adding note-related schema changes.
+- 2026-08-28: after approval, user should provide a ZIP of existing Markdown or two representative Markdown files for validation.
+- 2026-08-28: user-facing explanation should state that guest workspace is convenient but not a secure long-term backup without export/recovery.
+- 2026-08-28: final architecture should preserve the existing seed module and add note library as an independent stage.
+- 2026-08-28: current project checkpoint remains 74315fb5 until note feature implementation is approved and completed.
+- 2026-08-28: no publish action is taken automatically; user controls publication after checkpoint.
+- 2026-08-28: current design status is awaiting user choice among A/B/C and confirmation of original source and inference location.
+- 2026-08-28: the user’s macOS/Obsidian/Claude Code CLI preference favors a companion CLI after web ingestion is validated, not a browser-only file watcher.
+- 2026-08-28: the recommended first implementation is a read-only note library with file upload, parsed section preview, and provenance telemetry; editing remains in Obsidian.
+- 2026-08-28: inference should begin with a constrained “compare author limitations vs reviewer criticisms” template rather than unconstrained chat.
+- 2026-08-28: note graph should begin with explicit wikilinks and external citation identifiers before AI-suggested relationships.
+- 2026-08-28: no note content should be fabricated to demonstrate the pipeline; samples must be actual user files or marked fixtures.
+- 2026-08-28: if the user chooses server storage, implement retention/deletion/export controls before enabling inference.
+- 2026-08-28: if the user chooses local-only, implement CLI bundle generation before homepage inference, because the homepage cannot read local vault contents by itself.
+- 2026-08-28: if the user chooses browser direct access, treat it as an experimental adapter with explicit permission and no automatic background sync.
+- 2026-08-28: user’s direct question is answered by separating canonical storage, searchable copy, index, and derived inference output rather than selecting a single folder.
+- 2026-08-28: next user interaction should confirm storage and inference choices, after which plan and todo will be updated again if needed.
+- 2026-08-28: this design history is intentionally verbose to preserve decisions for future sessions and should not be used as a substitute for source evidence.
+- 2026-08-28: design history records decisions and hypotheses only; it is not research evidence and must not enter AI note retrieval by default.
+- 2026-08-28: when implemented, design history should remain in project documentation, not be imported into the user's research note collection.
+- 2026-08-28: current conversation is at the design approval gate for note storage and website inference.
+- 2026-08-28: user may reply with a compact choice such as `A / 웹 저장 허용 / 웹 추론 / 별도 derived 파일 / ZIP 시작` to begin implementation.
+- 2026-08-28: until that reply, no note ingestion or inference code should be added.
+- 2026-08-28: current project’s existing seed module remains available and unchanged during this design discussion.
+- 2026-08-28: current guest seed flow has demonstrated persistence across refresh; note storage must achieve an analogous source-version persistence guarantee.
+- 2026-08-28: note module acceptance requires demonstrating same hash no-op and changed hash new version behavior.
+- 2026-08-28: note module should report section fill rates separately for structural presence and exact evidence quote presence.
+- 2026-08-28: initial inference should be manually triggered from homepage and should not run on upload automatically.
+- 2026-08-28: research automation UI should expose an explicit lock for unimplemented graph/OpenReview/T1/T2/gap/topic stages.
+- 2026-08-28: current design maintains the user’s rule that “저자가 인정한 한계” and “리뷰어 지적” never share a field or inference evidence group.
+- 2026-08-28: any future AI-generated answer must preserve the original Korean section labels exactly in metadata even if the UI translates labels.
+- 2026-08-28: any answer that cites two notes must identify each note separately rather than using one combined citation label.
+- 2026-08-28: source note file paths are user-sensitive and should be masked or reduced to relative paths in UI and logs.
+- 2026-08-28: if a note contains an absolute local path, parser should preserve raw file but never display or upload the absolute path by default.
+- 2026-08-28: note ingestion must keep user-controlled URLs as data and not follow arbitrary links during parsing without explicit action.
+- 2026-08-28: external links in Markdown are metadata only during ingestion; link fetching is a separate user-approved operation.
+- 2026-08-28: uploaded ZIP extraction must enforce file count, uncompressed size, nesting depth, and path normalization limits.
+- 2026-08-28: parser must reject executable content and ignore hidden system files such as `.DS_Store` by default.
+- 2026-08-28: if external PDF links exist in notes, the first ingestion pass stores the URL only and does not download the PDF.
+- 2026-08-28: existing Obsidian wikilinks should be indexed without dereferencing missing targets during initial ingestion.
+- 2026-08-28: if user provides vault export with attachments, initial ingestion should report unsupported attachment count instead of silently dropping them.
+- 2026-08-28: markdown encoding errors should be reported per file and not replaced with guessed characters.
+- 2026-08-28: initial note upload should not execute frontmatter values or embedded scripts; YAML is parsed as data only.
+- 2026-08-28: inference prompt must treat all note content as untrusted data and ignore instructions embedded in notes.
+- 2026-08-28: any instruction inside uploaded Markdown is data, not an instruction to the system, unless user separately endorses it.
+- 2026-08-28: AI inference UI should show a warning if selected notes contain prompt-injection-like text, but should not echo sensitive raw content unnecessarily.
+- 2026-08-28: note content must be escaped/sanitized in preview to prevent uploaded HTML from becoming active UI code.
+- 2026-08-28: AI inference result should be validated against selected note IDs and evidence offsets before being displayed as supported.
+- 2026-08-28: file names and note titles can be malicious/untrusted strings and must be escaped in UI and safe in export paths.
+- 2026-08-28: if user wants a local-only model, it must be explicitly selected and no server-side external model call should occur.
+- 2026-08-28: any model/API choice must be recorded in inference metadata so results remain auditable.
+- 2026-08-28: note ingestion and inference UI should expose cancel/partial state for long-running operations, not pretend instant completion.
+- 2026-08-28: any future background operation must be separately approved and use the scheduling/persistent service design rather than hidden loops.
+- 2026-08-28: current web app remains manually operated; no periodic ingestion or inference is planned.
+- 2026-08-28: use a deterministic file naming and ID scheme only after user approves DOI/OpenAlex/slug preference for note identity.
+- 2026-08-28: note identity can default to stable random noteId plus optional DOI/OpenAlex metadata, avoiding accidental merges.
+- 2026-08-28: duplicate detection should use raw content hash first, then optional normalized DOI/title match as a warning rather than automatic merge.
+- 2026-08-28: duplicate title across different papers must not be merged solely by title.
+- 2026-08-28: note source version should include ingestion timestamp and raw content hash, while parsed representation can have a separate parser version.
+- 2026-08-28: parser upgrades may change parsed section results without changing raw source version; store parser version for reproducibility.
+- 2026-08-28: inference rerun triggered by parser version change should be explicit, not automatic.
+- 2026-08-28: source evidence storage should support exact quote and offsets to enable UI jump-to-source behavior.
+- 2026-08-28: if a note field is “없음”, treat it as an explicit source assertion and distinguish it from a missing heading.
+- 2026-08-28: section fill rate should separate explicit “없음” from truly absent section so data quality is transparent.
+- 2026-08-28: AI must not convert explicit “없음” into a speculative answer.
+- 2026-08-28: compare results should include explicit-empty markers where a source note says “없음”.
+- 2026-08-28: evidence search should exclude project design history and todo content by default.
+- 2026-08-28: AI inference should search only ingested user note documents, not arbitrary project files or web pages.
+- 2026-08-28: inference UI should clearly distinguish user note sources from external metadata sources.
+- 2026-08-28: external web retrieval for a note question is a future opt-in and not part of evidence-only inference.
+- 2026-08-28: any future external retrieval must show which claims come from web sources versus user notes.
+- 2026-08-28: current note design intentionally keeps web retrieval off to preserve the user’s original-evidence constraint.
+- 2026-08-28: if AI is used to classify or normalize note fields, the original field and normalized field must both be retained.
+- 2026-08-28: user can reject normalized interpretation without changing original Markdown.
+- 2026-08-28: normalization should be deterministic where possible and tested before AI assistance.
+- 2026-08-28: the website should not claim “top-tier” based solely on a user note’s venue metadata; external verification remains separate.
+- 2026-08-28: note storage model should retain `seed_from` exactly as source provenance and not rewrite it into a generated query label.
+- 2026-08-28: when a note is linked to a seed run, relation should record link provenance and the run snapshot version.
+- 2026-08-28: inference output should not change seed membership or tier assignment automatically.
+- 2026-08-28: user review status for AI outputs should not be mistaken for paper acceptance or venue verification.
+- 2026-08-28: workflow UI should reserve a visible “not run” state for gap/topic suggestion to avoid user confusion.
+- 2026-08-28: implementation should begin only after the user chooses storage/inference strategy and provides representative note files if needed.
+- 2026-08-28: current response should end with a compact decision request rather than starting implementation.
+- 2026-08-28: if user chooses the recommended strategy, first deliverable is note ingestion design and then code only after explicit “승인/다음”.
+- 2026-08-28: no user note data is currently present in the workspace; do not invent note samples.
+- 2026-08-28: future test fixtures must use clearly artificial text and never be presented as real paper content.
+- 2026-08-28: user can provide a ZIP or two representative `.md` files after choosing a strategy.
+- 2026-08-28: current design gate remains open.
+- 2026-08-28: final choice prompt should be concise and include recommended default and alternatives.
+- 2026-08-28: after user choice, update plan and todo again before implementation.
+- 2026-08-28: no further tools should be used for implementation until choice is received.
+- 2026-08-28: the current design history is a project planning artifact and must not be ingested as research evidence.
+- 2026-08-28: the user’s request is a design question; answer with architecture and decision points before code.
+- 2026-08-28: preserve existing seed UI, venue allowlist, guest workspace behavior, and module locks while adding note management later.
+- 2026-08-28: note management UI should reuse industrial layout but should not add extra decorative panels that obscure evidence.
+- 2026-08-28: any new note UI should show original section text before AI-derived text.
+- 2026-08-28: model/provider choice remains unresolved until user selects web inference versus local-only.
+- 2026-08-28: storage retention and deletion remain unresolved until user selects server copy policy.
+- 2026-08-28: note identity preference remains unresolved until user confirms DOI/OpenAlex/slug/random ID policy.
+- 2026-08-28: first module can proceed with random stable noteId plus optional DOI/OpenAlex fields to avoid blocking on identity preference.
+- 2026-08-28: direct browser vault integration remains experimental and not the default recommendation.
+- 2026-08-28: recommended architecture should be explained with a simple data flow diagram in the next design response if useful.
+- 2026-08-28: next design response should state that a web app cannot access arbitrary macOS vault folders without explicit file permission or a local bridge.
+- 2026-08-28: user can still use Claude Code CLI to prepare a sanitized ZIP or sync manifest before upload.
+- 2026-08-28: user’s current need is to decide where notes live and how homepage inference should access them, not to modify existing Markdown schema.
+- 2026-08-28: therefore the immediate deliverable is a clear architecture choice request, not code.
+- 2026-08-28: store raw user Markdown outside the database blob; use S3 object storage and database metadata/index.
+- 2026-08-28: preserve content hash and parser version to make inference reproducible.
+- 2026-08-28: derived outputs should be exportable as Markdown and machine-readable JSON.
+- 2026-08-28: all note-related operations should remain manual-triggered in the initial implementation.
+- 2026-08-28: user confirmation required before any actual note content is accepted or sent to a model.
+- 2026-08-28: end of current design history.
+
+## Pending decisions
+- Canonical source: Obsidian/Git, web storage, or local-only.
+- Server copy: allowed or prohibited.
+- Inference location: web, local CLI, or hybrid.
+- Derived result format: separate `.ai.md`, `derived/` folder, or JSON-only.
+- Initial ingest method: ZIP upload, individual files, or CLI sync.
+- Identity fallback: DOI, OpenAlex ID, slug, or stable random note ID.
+- Retention/deletion/recovery policy for guest workspace.
+- Initial AI question template and model/provider.
+- Maximum notes, file size, and evidence chunks per run.
+- Whether the user will provide a ZIP or two representative Markdown files for the first parser validation.
+
+## Approval request
+- Recommended: `A / canonical Obsidian·Git / 웹 검색 사본 저장 / 웹 근거 기반 추론 / 별도 derived AI 파일 / ZIP 업로드 시작`
+- Privacy-first alternative: `B / canonical Obsidian·Git / 웹 원문 미저장 / 로컬 CLI 추론 / 결과 bundle만 홈페이지 검토`
+- Experimental alternative: `C / 브라우저 로컬 vault 연결 / 명시적 파일 권한 / 자동 동기화 없음`
+- Do not begin note implementation until the user selects and approves one option.
+
+- [ ] 다중 사용자별 workspace와 여러 연구 collection을 분리하는 문서 관리 구조를 설계한다.
+- [ ] `DINCO_LLM.md`의 frontmatter·주장·저자 명시 한계·사용자 관찰·사용자 확인 필요 영역을 보존하는 파싱 규칙을 설계한다.
+- [ ] 원문 노트와 사용자 작성 해석·외부지식 표기를 서로 다른 provenance type으로 관리한다.
+- [ ] 동일 논문의 여러 버전과 여러 collection 소속을 안전하게 관리하는 데이터 모델을 설계한다.
+- [ ] 사용자·workspace·collection 단위의 문서 접근 제어와 추론 대상 범위를 설계한다.
+- [ ] 문서 저장소·검색 인덱스·AI 파생 결과의 다중 사용자 격리 경계를 설계한다.
+- [ ] 첨부 노트 1편을 실제 구조 샘플로 사용해 문서 모델과 필드별 보존 결과를 검증한다.
+- [ ] 다중 사용자 문서 관리 설계 승인 전에는 실제 Markdown 업로드·AI 추론 구현을 시작하지 않는다.
+
+## Multi-user note management design history
+- 2026-08-28: 사용자는 홈페이지가 여러 사용자를 대상으로 하므로 사용자별 관심 논문과 여러 연구 주제를 독립적으로 관리해야 한다고 уточ정함.
+- 2026-08-28: 첨부된 `DINCO_LLM.md`는 기존의 고정 섹션 스키마와 다르게 `한계`, `저자 명시`, `내가 본 것`, `내 맥락`을 사용하므로 parser가 heading alias와 provenance를 보존해야 함.
+- 2026-08-28: `저자 명시`는 논문 원문에 근거한 author limitation으로 취급하고 `내가 본 것`은 사용자 해석·외부지식 표기로 별도 분리해야 함.
+- 2026-08-28: `내 맥락`의 `(사용자 확인 필요) 요약됨.`은 사용자 작성 영역이며 AI가 논문 사실로 승격하거나 자동 확정하지 않음.
+- 2026-08-28: 여러 사용자는 같은 논문을 각자의 번역·한계 해석·주제 접점과 함께 보유할 수 있으므로 원본 paper identity와 user note identity를 분리해야 함.
+- 2026-08-28: 동일한 논문이 여러 collection에 속할 수 있으므로 document와 collection membership을 별도 관계로 저장함.
+- 2026-08-28: 사용자의 노트는 논문 자체의 공용 메타데이터와 사용자 개인 annotation을 같은 레코드에 섞지 않는 방향을 우선함.
+- 2026-08-28: 다중 사용자 격리는 사용자 ID가 아니라 workspace·membership·document ownership 조합으로 서버에서 매 요청 검증해야 함.
+- 2026-08-28: AI 추론은 선택된 사용자의 선택된 collection/document version만 사용하고 다른 사용자의 문서를 검색 대상에 넣지 않음.
+- 2026-08-28: 개인 노트와 공유 가능한 논문 metadata는 권한이 다르므로 `private`, `workspace`, `shared` 가시성 수준을 별도로 설계함.
+- 2026-08-28: 게스트 workspace의 현재 UUID 접근 방식은 장기 다중 사용자 문서 권한의 충분한 인증으로 간주하지 않으며 향후 계정 연결을 고려함.
+- 2026-08-28: 기존 `DINCO_LLM.md`는 `id: 2509.25532v2`, `venue: ICLR 2026`, `year: 2026`, `arxiv`와 keywords를 가진 metadata-rich note임.
+- 2026-08-28: 논문 note의 canonical identity는 DOI만으로 고정하지 않고 arXiv/version/OpenAlex ID와 사용자 note ID를 함께 보존하는 방향을 우선함.
+- 2026-08-28: 동일 논문 v1/v2는 source version으로 분리하고, user note가 어떤 paper version을 대상으로 하는지 명시해야 함.
+- 2026-08-28: note frontmatter의 임의 field를 삭제하지 않고 raw frontmatter와 normalized fields를 함께 보존하는 방향을 우선함.
+- 2026-08-28: keywords는 검색용 token으로 정규화하되 원문 배열도 보존함.
+- 2026-08-28: `주장` 아래 C1–C6처럼 번호·괄호·인용 위치를 포함한 문장은 claim unit으로 파싱하되 원문 문장을 수정하지 않음.
+- 2026-08-28: `저자 명시` 아래 bullet은 author-evidence group으로, `내가 본 것` 아래 bullet은 user-observation group으로 인덱싱함.
+- 2026-08-28: `[외부지식]` 표시는 외부지식 근거가 노트 안에 없다는 provenance marker이므로 AI가 논문 사실로 사용하지 않음.
+- 2026-08-28: `§`, `Eq.`, `Fig.`, `Table`, `Appendix` 표기는 source locator 후보로 보존함.
+- 2026-08-28: 첨부 note는 실제 사용자 파일이므로 임의 synthetic sample로 취급하지 않고 구조 분석 샘플로만 사용함.
+- 2026-08-28: 첨부 note의 실제 논문 내용은 원문 근거 저장 대상으로 취급하되, 별도 외부 검증을 하지 않은 문장은 user note content로 표시함.
+- 2026-08-28: AI는 note의 `내가 본 것`을 `저자 명시`와 합쳐 author limitation으로 반환하지 않음.
+- 2026-08-28: multi-user library는 global paper metadata, user-authored note, collection membership, derived inference를 서로 다른 entity로 두는 방향을 우선함.
+- 2026-08-28: 같은 논문의 사용자별 notes는 각자의 source version·content hash·annotation provenance를 유지함.
+- 2026-08-28: workspace 내 여러 collection은 note를 복사하지 않고 membership join으로 연결함.
+- 2026-08-28: collection별 custom tags와 user annotations는 global paper metadata와 별도 저장함.
+- 2026-08-28: note file path는 workspace 내부 상대 경로만 보존하고 로컬 vault 절대 경로는 저장·표시하지 않음.
+- 2026-08-28: file name collision은 자동 병합하지 않고 conflict 상태로 표시함.
+- 2026-08-28: 같은 hash의 파일이라도 다른 workspace에 재업로드되면 소유권을 공유하지 않고 workspace별 document reference를 생성함.
+- 2026-08-28: 사용자가 공유를 선택하지 않은 document는 다른 workspace/user 검색 결과에 절대 노출하지 않음.
+- 2026-08-28: AI inference result도 workspace scope를 가진 독립 결과로 저장하며 note 원본 권한을 상속함.
+- 2026-08-28: inference evidence는 document version과 section/chunk ID를 참조하며, 권한이 사라지면 source unavailable로 표시함.
+- 2026-08-28: 공개 논문 metadata와 개인 노트 본문을 하나의 검색 색인에서 섞지 않고 source type filter를 둠.
+- 2026-08-28: global paper metadata를 재사용하더라도 user note body·selection note·내 맥락은 사용자 소유로 유지함.
+- 2026-08-28: 사용자가 같은 paper를 여러 research collection에 넣을 때 note 원문은 하나이고 collection membership만 여러 개임.
+- 2026-08-28: 사용자가 노트를 복사해 별도 해석을 만들면 content hash와 note ID가 달라진 별도 user document로 취급함.
+- 2026-08-28: 원문 파일과 AI 파생 파일을 같은 이름으로 덮어쓰지 않도록 workspace/derived 경계를 유지함.
+- 2026-08-28: 문서 목록 UI에는 `내 문서`, `내 collection`, `공유됨`, `파싱 경고`, `stale inference` 필터가 필요함.
+- 2026-08-28: collection UI에는 collection name, description, note count, last sync, inference count, visibility를 표시하는 방향을 우선함.
+- 2026-08-28: note detail UI에는 raw Markdown preview, parsed fields, provenance badge, version history, collection memberships를 표시함.
+- 2026-08-28: note detail에서 author evidence와 user observation을 시각적으로 다른 그룹으로 표시함.
+- 2026-08-28: `[외부지식]`가 있는 항목은 논문 원문 근거가 아님을 UI에서 명시함.
+- 2026-08-28: AI inference UI는 collection 선택 후 note snapshot을 고정하고, 실행 중 변경된 note는 자동으로 포함하지 않음.
+- 2026-08-28: 새 note version이 생기면 이전 inference는 stale 상태가 되고 자동 수정되지 않음.
+- 2026-08-28: 문서 검색은 기본적으로 현재 workspace와 현재 collection 범위로 제한하고 global search는 공용 metadata만 대상으로 함.
+- 2026-08-28: 검색 결과에는 note owner/workspace와 visibility를 표시하되 다른 사용자의 private path나 본문을 노출하지 않음.
+- 2026-08-28: 공유 문서의 공유 범위 변경은 기존 inference result에 자동 적용하지 않고 source permission changed 경고를 남김.
+- 2026-08-28: 사용자가 collection을 삭제해도 note 원문은 자동 삭제하지 않고 membership만 제거하는 방향을 우선함.
+- 2026-08-28: note 삭제는 soft delete 후 inference history를 보존하고 source unavailable로 표시함.
+- 2026-08-28: workspace 삭제는 원문 object·index·derived result의 삭제 정책을 별도로 확인한 뒤 수행함.
+- 2026-08-28: 사용자별 storage quota, file count, per-file size, inference quota를 별도 정책으로 둠.
+- 2026-08-28: quota 초과 시 일부 파일만 조용히 누락하지 않고 batch summary와 실패 이유를 보여줌.
+- 2026-08-28: file upload는 request workspace membership과 guest key/account ownership을 함께 검증함.
+- 2026-08-28: 공개되지 않은 note의 원문은 모델 provider로 전송되기 전에 사용자의 명시적 inference 실행을 요구함.
+- 2026-08-28: 사용자가 같은 workspace를 여러 기기에서 쓸 경우 로그인 또는 recovery export가 필요함.
+- 2026-08-28: guest workspace는 본인 인증이 아니므로 민감한 unpublished research note에는 경고를 제공함.
+- 2026-08-28: multi-user architecture의 canonical source는 각 사용자의 Obsidian/Git이고, hosted copy는 workspace-owned searchable replica임.
+- 2026-08-28: user note를 global shared paper로 승격하는 작업은 자동화하지 않고 explicit share action으로 제한함.
+- 2026-08-28: explicit share 시에도 raw private annotations와 selected public fields를 구분해 공유함.
+- 2026-08-28: global paper metadata는 external source provenance를 유지하고 user note metadata와 덮어쓰지 않음.
+- 2026-08-28: 여러 사용자가 같은 paper에 대해 서로 다른 `내가 본 것`을 가질 수 있으므로 user observation은 절대 global note에 병합하지 않음.
+- 2026-08-28: AI comparison 결과는 사용자의 선택 범위에만 보이며 다른 사용자의 결과 목록에는 나타나지 않음.
+- 2026-08-28: AI가 public metadata와 private note를 함께 사용하면 답변에서 source visibility와 source type을 함께 표시함.
+- 2026-08-28: note ingestion parser는 exact heading alias를 사용하되 custom heading은 unknown section warning으로 남김.
+- 2026-08-28: 현재 고정 schema와 DINCO 변형 schema를 모두 수용하되 normalized section mapping과 raw heading을 함께 보존함.
+- 2026-08-28: `한계` 아래 `저자 명시`와 `내가 본 것`은 source provenance에 따라 서로 다른 normalized sections으로 분리함.
+- 2026-08-28: `내 맥락`은 user_context section으로 저장하고 AI 기본 evidence set에서는 제외함.
+- 2026-08-28: `주장`의 C1–C6는 claim IDs를 만들어 원문 위치와 함께 저장하고, AI가 주장 번호를 임의 변경하지 않음.
+- 2026-08-28: note parser는 Markdown list indentation과 multiline bullet을 보존해 문장 단위 evidence를 잃지 않게 함.
+- 2026-08-28: source locator는 텍스트 offset과 표시용 locator를 함께 저장함.
+- 2026-08-28: note title과 filename이 다르면 frontmatter title을 display title로 사용하고 filename을 source metadata로 보존함.
+- 2026-08-28: note ID frontmatter가 있으면 원문 ID를 externalNoteId로 보존하되 내부 ID는 workspace-scoped random ID로 생성함.
+- 2026-08-28: `arxiv` field는 external identifier로 저장하며 자동으로 외부 URL을 요청하지 않음.
+- 2026-08-28: `venue`는 사용자 노트 metadata로 저장하고 external top-tier verification 결과와 동일시하지 않음.
+- 2026-08-28: keywords의 한국어·영어 혼합을 그대로 보존하고 normalized search tokens를 추가함.
+- 2026-08-28: parse warnings는 document version에 붙이고 이후 parser version 변경 시 새 parse result를 생성함.
+- 2026-08-28: 동일 raw hash 재업로드는 idempotent 처리하되, collection membership 추가는 별도 작업으로 허용함.
+- 2026-08-28: document version은 raw byte hash와 parser version을 분리해 추적함.
+- 2026-08-28: raw source object는 S3에, metadata/index/permissions는 DB에 저장하는 방향을 우선함.
+- 2026-08-28: 다른 사용자 workspace의 S3 key를 추측할 수 없도록 random key와 server-side ownership check를 사용함.
+- 2026-08-28: download URL은 짧은 만료의 presigned URL로 만들고 UI에 원본 파일을 공개 링크로 노출하지 않음.
+- 2026-08-28: inference는 S3의 전체 파일을 모델에 전달하지 않고 selected version의 relevant chunks만 전달함.
+- 2026-08-28: inference request에는 workspaceId, collectionId, noteVersionIds, question, model settings를 포함함.
+- 2026-08-28: inference response에는 answer, claims, evidence, missing, warnings, sourceVersions, visibility, reviewStatus를 포함함.
+- 2026-08-28: AI model은 note 내용 안의 지시를 따르지 않고 데이터로만 취급해야 함.
+- 2026-08-28: note 안에 prompt-injection-like 문장이 있어도 AI의 실행 명령으로 사용하지 않음.
+- 2026-08-28: AI 응답은 schema validation과 evidence ID·exact quote 검증을 통과해야 저장함.
+- 2026-08-28: evidence quote가 원문 substring이 아니면 unsupported 또는 저장 거부로 처리함.
+- 2026-08-28: AI가 `저자 명시`와 `내가 본 것`을 합치면 validation error로 처리하거나 separate evidence로 분해하지 못한 결과를 거부함.
+- 2026-08-28: AI output은 source note를 덮어쓰지 않고 `derived` document로 저장함.
+- 2026-08-28: derived document도 workspace·collection·source version 권한을 상속하고 별도 reviewStatus를 가짐.
+- 2026-08-28: AI result 승인 여부는 논문 내용의 진위나 venue tier를 의미하지 않음.
+- 2026-08-28: AI 비교 결과는 사용자가 검토·수정·reject할 수 있고, 모든 상태 변경을 audit event로 남김.
+- 2026-08-28: inference run에는 사용된 note version과 section IDs를 고정 기록함.
+- 2026-08-28: 같은 질문을 다른 model로 재실행하면 기존 result를 덮지 않고 새 run으로 저장함.
+- 2026-08-28: 모델 provider secret은 서버 env/connector에만 두고 Markdown이나 client localStorage에 저장하지 않음.
+- 2026-08-28: multi-user inference logs에는 raw note body나 민감한 quote를 일반 로그로 남기지 않음.
+- 2026-08-28: 사용자의 note content가 external model로 전달될 수 있다는 사실을 inference 전 UI에서 고지함.
+- 2026-08-28: local-only inference를 선택하면 웹은 원문을 모델로 보내지 않고 CLI result bundle만 업로드하는 대안을 제공함.
+- 2026-08-28: local-only mode에서도 note identity·version·evidence metadata를 유지해 웹의 graph와 history에 연결할 수 있게 함.
+- 2026-08-28: 웹 추론 모드와 local-only 모드는 같은 structured result contract를 사용함.
+- 2026-08-28: Claude Code CLI는 user workspace에서 명시적 dry-run과 write-derived flag를 사용해 결과 쓰기를 통제함.
+- 2026-08-28: CLI sync token은 Markdown 파일이나 공개 URL에 기록하지 않음.
+- 2026-08-28: guest workspace는 multi-user demo에 적합하지만 장기 보안·복구에는 로그인 또는 recovery secret이 필요함.
+- 2026-08-28: workspace membership table은 향후 user account와 guest identity를 모두 연결할 수 있도록 설계함.
+- 2026-08-28: account login이 복구되면 기존 guest workspace를 계정으로 claim하는 명시적 flow를 추가할 수 있음.
+- 2026-08-28: user별 여러 topic은 collection 또는 project entity로 표현하고 note 원본과 분리함.
+- 2026-08-28: collection membership은 many-to-many이며 note를 복사하지 않음.
+- 2026-08-28: collection 간 note 이동은 membership update이며 note version을 생성하지 않음.
+- 2026-08-28: collection별 inference scope는 실행 시 snapshot으로 고정함.
+- 2026-08-28: collection 삭제 시 membership만 삭제하는 기본 정책을 우선함.
+- 2026-08-28: note 삭제와 collection 삭제를 별도 UI action으로 분리해 실수로 원문을 지우지 않게 함.
+- 2026-08-28: UI의 document list는 owner, collection, tier, venue, version, parse status, last inference status로 필터링함.
+- 2026-08-28: UI는 private/shared status를 명확히 표시하며 기본값은 private임.
+- 2026-08-28: 공용 paper metadata는 공유해도 개인 `내가 본 것`, `내 맥락`, selection note는 공유하지 않음.
+- 2026-08-28: 사용자가 공유할 때 field-level selection을 제공하는 것이 장기적으로 필요함.
+- 2026-08-28: sharing은 초기 MVP에서 제외하고 private-by-default로 시작하는 방향을 우선함.
+- 2026-08-28: note detail에서 source file download는 현재 user/workspace 권한 확인 후 제공함.
+- 2026-08-28: note preview는 HTML/script를 실행하지 않고 안전하게 sanitize함.
+- 2026-08-28: raw Markdown 다운로드와 sanitized preview를 서로 다른 경로로 제공함.
+- 2026-08-28: 업로드 ZIP은 path traversal, symbolic link, hidden system file, executable, nested depth를 검증함.
+- 2026-08-28: 파일 수·압축 해제 크기·개별 파일 크기 상한을 workspace 정책으로 표시함.
+- 2026-08-28: 실패 파일은 batch 전체를 실패시키지 않고 file-level failure로 저장함.
+- 2026-08-28: 성공 파일과 실패 파일의 원인·재시도 경로를 UI에 표시함.
+- 2026-08-28: parser는 YAML 값을 실행하지 않고 data로만 해석함.
+- 2026-08-28: Markdown 안의 링크는 ingestion 단계에서 fetch하지 않고 링크 metadata로만 저장함.
+- 2026-08-28: external PDF·arXiv 링크의 다운로드는 별도 사용자가 승인한 모듈로 남김.
+- 2026-08-28: `DINCO_LLM.md`에서 `§2.1–§2.2`, `Table 5`, `Appendix D.3` 같은 locator를 별도 evidence locator로 보존함.
+- 2026-08-28: `외부지식` marker가 있는 observation은 note-author evidence로 검색하지 않으며 user observation 검색에서 별도로 표시함.
+- 2026-08-28: `사용자 확인 필요` marker는 pending annotation 상태로 저장하고 AI가 확정하지 않음.
+- 2026-08-28: 기존 note에 요약된 문장이 있어도 AI가 원문 논문에 있다고 단정하지 않고 note source로 인용함.
+- 2026-08-28: 논문 원문 PDF와 사용자의 Markdown 요약은 source type을 다르게 관리함.
+- 2026-08-28: 같은 note의 author limitation과 reviewer criticism이 섞여 있으면 parser warning을 제공하고 자동 교정하지 않음.
+- 2026-08-28: 첨부 note에는 리뷰어 지적 섹션이 없으므로 해당 field는 `section_missing`으로 보고해야 하며 AI가 추정하지 않음.
+- 2026-08-28: 첨부 note의 `저자 명시`는 author limitation evidence 후보이고 `내가 본 것`은 user-authored observation evidence 후보임.
+- 2026-08-28: 첨부 note의 `내 맥락`은 사용자 입력 placeholder이므로 initial inference에서 제외함.
+- 2026-08-28: note management 첫 acceptance sample은 첨부 `DINCO_LLM.md` 1편과 사용자가 허용한 두 번째 note로 구성함.
+- 2026-08-28: 두 번째 note가 없으면 실제 연구 내용 샘플을 만들지 않고, 첨부 note 1편의 parse 결과만 검증함.
+- 2026-08-28: 파일별 metrics는 uploaded, parsed, duplicate, failed, warnings, section presence, explicit-empty count를 표시함.
+- 2026-08-28: AI metrics는 selected notes, source versions, evidence chunks, supported claims, missing claims, failed claims를 표시함.
+- 2026-08-28: note ingestion은 seed search 결과와 별도 pipeline stage로 표시하고 기존 seed run을 변경하지 않음.
+- 2026-08-28: note collection과 seed run의 연결은 source provenance가 명확한 경우에만 사용자가 명시적으로 수행함.
+- 2026-08-28: note graph는 wikilink edge와 citation edge를 별도 source로 관리하며 AI relation은 suggested로 시작함.
+- 2026-08-28: 사용자의 private note에서 추출된 AI suggested edge는 다른 사용자의 graph에 노출되지 않음.
+- 2026-08-28: shared graph를 도입하려면 edge별 visibility와 source permission을 함께 설계해야 함.
+- 2026-08-28: user별 graph는 noteId collision을 피하기 위해 workspace-scoped IDs를 사용함.
+- 2026-08-28: external paper node는 DOI/arXiv/OpenAlex identity를 별도 저장하고 사용자 note node와 연결함.
+- 2026-08-28: 동일 external paper를 여러 사용자가 note로 가지고 있어도 note content는 합치지 않고 external identity만 재사용함.
+- 2026-08-28: graph UI는 source filter·workspace filter·collection filter·edge status filter를 제공해야 함.
+- 2026-08-28: AI inference가 graph edge를 생성해도 user approval 전에는 note link 파일을 자동 수정하지 않음.
+- 2026-08-28: export bundle은 user workspace별로 분리하고 다른 workspace 파일을 포함하지 않음.
+- 2026-08-28: export manifest는 workspace ID·note IDs·hashes·versions·visibility를 포함하되 guest key 자체는 포함하지 않음.
+- 2026-08-28: import는 새 workspace에 기존 note를 복제할 수 있지만 원래 owner identity를 자동 승계하지 않음.
+- 2026-08-28: 다른 사용자에게 공유할 때 원본 파일의 private fields를 제거한 public projection을 별도로 생성하는 방향을 우선함.
+- 2026-08-28: multi-user document architecture는 tenant isolation을 핵심 invariant로 두고 모든 query helper에 workspace scope를 요구함.
+- 2026-08-28: 서버 procedure는 user/guest context와 workspace membership을 먼저 확인한 뒤 document query를 실행함.
+- 2026-08-28: raw object key를 클라이언트가 직접 지정하지 않고 서버가 생성함.
+- 2026-08-28: object metadata에 workspace ID를 포함하되 path 자체를 권한 검증으로 신뢰하지 않음.
+- 2026-08-28: inference endpoint는 note IDs를 받아도 workspace ownership을 재조회해 검증함.
+- 2026-08-28: note IDs만으로 다른 사용자 문서를 조회할 수 있는 endpoint를 만들지 않음.
+- 2026-08-28: 공유 collection membership은 명시적 role로 구분하고 owner/editor/viewer를 향후 지원함.
+- 2026-08-28: 초기에는 private-only collection으로 시작해 permission surface를 줄이는 방향을 우선함.
+- 2026-08-28: guest workspace의 note library는 private-by-default이며 public discovery를 제공하지 않음.
+- 2026-08-28: user account가 추가되면 guest workspace claim flow를 별도 audit event로 기록함.
+- 2026-08-28: 계정 삭제 시 개인 note와 derived result의 export/delete 선택을 제공해야 함.
+- 2026-08-28: note content는 일반 애플리케이션 로그와 analytics payload에 포함하지 않음.
+- 2026-08-28: error messages는 파일명·필드·원인만 보여주고 민감한 원문 전체를 포함하지 않음.
+- 2026-08-28: UI telemetry는 문서 수·필드 채움률·실패 건수만 집계하고 note body를 보내지 않음.
+- 2026-08-28: AI prompt audit는 prompt hash와 evidence IDs를 저장하고 raw prompt는 별도 보호 저장으로 분리할 수 있음.
+- 2026-08-28: 사용자에게 모델 전송 전 실제 evidence preview와 대상 note 목록을 보여주는 것이 필수 acceptance criterion임.
+- 2026-08-28: inference result는 user-visible answer와 raw structured JSON을 모두 보존해야 Claude Code CLI가 재사용할 수 있음.
+- 2026-08-28: derived Markdown은 note 원문과 다른 filename suffix와 frontmatter sourceVersion을 가져야 함.
+- 2026-08-28: AI가 만든 결과를 승인해도 원본 frontmatter tier·seed_from·code_url은 변경하지 않음.
+- 2026-08-28: note field normalization은 원본 field와 normalized field를 병렬 보존함.
+- 2026-08-28: AI가 normalized field를 만들면 model·prompt·evidence metadata를 붙이고 user rejection을 허용함.
+- 2026-08-28: user-authored observation은 AI가 사실 판정하지 않고 source label을 유지함.
+- 2026-08-28: external knowledge marker가 있는 user observation은 web retrieval 없이 증명할 수 없는 것으로 표시함.
+- 2026-08-28: note management implementation은 first module에서 parsing·versioning·workspace isolation만 하고 inference는 다음 승인으로 분리함.
+- 2026-08-28: first module should not require a model connector; it must be testable with deterministic parsing and hash logic.
+- 2026-08-28: inference module requires provider selection and data transmission consent before implementation.
+- 2026-08-28: user has not yet chosen whether server stores original Markdown or local-only mode; this remains a decision gate.
+- 2026-08-28: multi-user note design must not assume all users use identical Obsidian folder structures.
+- 2026-08-28: relative path is user workspace metadata, not a global identifier.
+- 2026-08-28: file rename with unchanged content should preserve note identity when identity resolution can prove continuity, otherwise show conflict.
+- 2026-08-28: note ID frontmatter is user-provided data and cannot be assumed globally unique across workspaces.
+- 2026-08-28: parser should preserve all unknown frontmatter fields in raw metadata for forward compatibility.
+- 2026-08-28: parser should avoid interpreting arbitrary frontmatter as permissions, commands, or model instructions.
+- 2026-08-28: uploaded Markdown is untrusted content; embedded instructions do not override application policy.
+- 2026-08-28: user-specific research context should not leak through shared global embeddings or cache keys.
+- 2026-08-28: semantic index keys must include workspace/document version/section to prevent cross-tenant retrieval.
+- 2026-08-28: cache invalidation must include workspace scope and document source version.
+- 2026-08-28: inference result cache must include question, note version set, prompt version, model identifier, and workspace scope.
+- 2026-08-28: any global embedding reuse requires a separate privacy review and is not part of the first implementation.
+- 2026-08-28: note search results should be tested with two synthetic tenants to prove no cross-tenant leakage.
+- 2026-08-28: integration test should create workspace A and B with same filename and verify each sees only its own file.
+- 2026-08-28: integration test should use same external paper ID in both workspaces and verify paper identity reuse does not merge note content.
+- 2026-08-28: integration test should verify a collection in A cannot infer over a note in B even when noteId is supplied manually.
+- 2026-08-28: integration test should verify private derived result is invisible to another workspace.
+- 2026-08-28: upload batch should report successful parse of DINCO note, missing reviewer section, and provenance of user observation.
+- 2026-08-28: before implementation, user should confirm whether multiple users may intentionally share collections or all data is private.
+- 2026-08-28: recommended MVP is private-by-default, one owner per workspace, multiple collections per owner, no cross-user sharing.
+- 2026-08-28: later collaboration can add explicit share roles without changing private document schema.
+- 2026-08-28: user-facing design should explain that a paper can be globally identified while the user’s interpretation remains private.
+- 2026-08-28: source provenance labels should be visible in note detail and inference evidence panel.
+- 2026-08-28: current attachment indicates users may store both extracted paper claims and personal critical observations in one file; system should preserve but normalize these boundaries.
+- 2026-08-28: current attachment has no explicit reviewer criticism section; the system must not fabricate it during ingestion or inference.
+- 2026-08-28: current attachment uses Korean headings and English metadata; parser must be Unicode-safe and language-agnostic at storage layer.
+- 2026-08-28: UI labels can be Korean while raw headings and quotes stay unchanged.
+- 2026-08-28: source locators with section symbols and table references must remain exact strings in evidence metadata.
+- 2026-08-28: the first note library screen should show parsed heading map and warnings before any AI action is enabled.
+- 2026-08-28: AI action should be disabled for documents with unreviewed parse errors unless user explicitly overrides with warning.
+- 2026-08-28: `내가 본 것` can be included in a separate user-analysis query only when user opts in, never in author-evidence default queries.
+- 2026-08-28: default AI comparison should operate only on author evidence sections and explicit metadata, excluding user context and external knowledge markers.
+- 2026-08-28: user-specific tags and collections should be queryable without altering raw Markdown.
+- 2026-08-28: collection-level prompts should be saved separately from note content and versioned as configuration.
+- 2026-08-28: inference output should record collection configuration version as well as note source versions.
+- 2026-08-28: a user can create multiple collection snapshots for the same notes, so inference results cannot be keyed only by document ID.
+- 2026-08-28: note management should support manual “exclude from inference” flag at document and section levels.
+- 2026-08-28: default exclusion candidates include `내 맥락` and `[외부지식]` observations.
+- 2026-08-28: user may explicitly include an excluded section in a separate analysis run, with provenance preserved.
+- 2026-08-28: no AI-generated conclusion should change document visibility or collection membership automatically.
+- 2026-08-28: multi-user data isolation must be enforced at database query level, not only filtered in frontend.
+- 2026-08-28: frontend must never request all documents and filter by workspace in client memory.
+- 2026-08-28: authorization failures should not reveal whether another workspace has a matching document ID.
+- 2026-08-28: public metadata endpoints should return only explicitly public fields and no private note body.
+- 2026-08-28: if future public sharing is added, create immutable public projection rather than expose private row directly.
+- 2026-08-28: user should be able to export their entire workspace with raw notes, derived results, and manifest, without exporting other workspaces.
+- 2026-08-28: export should be reproducible and include parser/inference versions but omit secrets and session keys.
+- 2026-08-28: workspace import should create a new workspace ownership boundary by default.
+- 2026-08-28: guest workspace migration to authenticated account should be explicit and reversible before final claim.
+- 2026-08-28: note content should not be used for analytics or model training outside the user’s explicit inference request.
+- 2026-08-28: data retention policy should distinguish original note, parsed index, embedding/index, and derived result deletion.
+- 2026-08-28: delete UI should show impact on derived results and graph edges before confirmation.
+- 2026-08-28: AI inference should be manually triggered; no background cross-user processing in initial MVP.
+- 2026-08-28: if scheduled inference is requested later, it must be designed separately with explicit workspace scope and opt-in.
+- 2026-08-28: current conversation is at the architecture clarification stage, not implementation approval.
+- 2026-08-28: next response should recommend private-by-default workspace with multiple collections and document memberships.
+- 2026-08-28: next response should use DINCO note to demonstrate field/provenance mapping without fabricating missing reviewer content.
+- 2026-08-28: next response should ask whether cross-user sharing is required now or can be deferred.
+- 2026-08-28: next response should ask whether source Markdown should be uploaded to hosted storage or kept local-only.
+- 2026-08-28: next response should ask whether one file can belong to multiple collections without duplication; recommended yes.
+- 2026-08-28: next response should ask whether AI should read user observations; recommended opt-in separate query scope.
+- 2026-08-28: next response should ask whether guest mode remains acceptable for long-term notes; recommended authenticated account or recovery export for long-term use.
+- 2026-08-28: until these decisions are answered, do not begin multi-user note schema migration or AI connector setup.
+- 2026-08-28: the user explicitly asked first how to manage many users’ many notes; design response must precede implementation.
+- 2026-08-28: current project checkpoint 74315fb5 remains the stable seed module baseline.
+- 2026-08-28: note management changes should be built on a separate checkpoint after design approval.
+- 2026-08-28: user-provided DINCO note should not be copied into project source or public assets without permission; use the upload path only for analysis unless user asks to persist it.
+- 2026-08-28: if the user approves ingestion, request actual two-note sample or ZIP and confirm whether server storage is allowed.
+- 2026-08-28: no AI model call should be made on DINCO note until user approves web inference and provider/data handling.
+- 2026-08-28: no external links in the note should be fetched automatically during analysis.
+- 2026-08-28: the design should preserve content hash and raw Markdown even if parsed normalized fields evolve.
+- 2026-08-28: the design should keep global paper identity and private user note identity separate so user interpretations never leak across tenants.
+- 2026-08-28: default collection membership is private and workspace-scoped.
+- 2026-08-28: default AI evidence excludes user observations and external knowledge markers, but explicit opt-in can enable a separate user-analysis mode.
+- 2026-08-28: missing reviewer criticism in DINCO note must be represented as missing, not an empty fabricated section.
+- 2026-08-28: user asks for management design before implementation; response should end with compact decisions rather than code.
+- 2026-08-28: current user has provided one representative note and no second note yet.
+- 2026-08-28: implementation acceptance remains blocked on storage and sharing choices, not on parsing feasibility.
+- 2026-08-28: if no sharing is needed now, private-by-default reduces permission complexity and is recommended.
+- 2026-08-28: if many users will use the homepage, account-based auth should eventually replace guest-only access for long-term document privacy.
+- 2026-08-28: guest mode can remain for trial runs with explicit non-backup warning.
+- 2026-08-28: next response should explain architecture in terms of tenant/workspace, collection, document, version, section, evidence, and inference run.
+- 2026-08-28: next response should explicitly map DINCO headings to normalized source types and missing fields.
+- 2026-08-28: next response should not imply that the attached note’s user observations are verified paper facts.
+- 2026-08-28: next response should state the first implementation module if approved: multi-user private note library ingestion and parse telemetry.
+- 2026-08-28: future module order is ingestion/isolation → collection management → evidence retrieval → inference → graph/export.
+- 2026-08-28: current design preserves existing seed module and its guest execution history.
+- 2026-08-28: this history is a planning artifact and should not be included in research note retrieval by default.
+- 2026-08-28: all future code changes must update todo before implementation and add tests before delivery.
+- 2026-08-28: end of current multi-user note management design history.
+
+## Multi-user design decision gate
+- Sharing: default private-only unless user explicitly requests collaboration.
+- Collections: one user/workspace can have many collections, and one note can belong to many collections without file duplication.
+- Identity: internal workspace-scoped note ID plus preserved external IDs (`id`, `arxiv`, DOI/OpenAlex when present).
+- Provenance: paper metadata, author evidence, user observation, user context, external knowledge marker, and AI-derived output remain separate.
+- Storage: canonical Obsidian/Git, optional hosted searchable copy, DB metadata/index, separate derived results.
+- Inference: only selected note versions and sections; author evidence default; user observations opt-in separate mode.
+- Sharing question: decide whether cross-user sharing is needed in the first release.
+- Server-copy question: decide whether uploaded Markdown may be stored on the server.
+- Long-term identity question: decide whether guest workspace remains acceptable or account/recovery is required.
+
+## Approval request
+- Recommended MVP: `private-by-default / multiple collections / one note can belong to many collections / Obsidian·Git canonical / web searchable copy allowed / manual web inference later / separate derived results`
+- Privacy-first: `private-by-default / local-only Markdown / local CLI inference / website receives result bundle only`
+- Collaboration later: `private MVP first / explicit collection sharing later / public projection separate from private note`
+- Before implementation, confirm: cross-user sharing now or later; server copy allowed or not; user observations included by default or opt-in; guest versus account recovery; ZIP upload versus CLI sync first.
+
+- [x] 계정별 private workspace에서 문서 접근을 서버 query 수준으로 격리한다.
+- [x] 여러 연구 Collection과 문서의 다대다 연결을 구현한다.
+- [x] Markdown 원문을 S3에 저장하고 DB에는 문서·버전·hash·파싱 결과를 저장한다.
+- [x] frontmatter와 heading alias를 보존하는 Markdown parser를 구현한다.
+- [x] DINCO_LLM.md의 `저자 명시`, `내가 본 것`, `내 맥락`을 서로 다른 provenance로 파싱한다.
+- [x] 문서 업로드·파싱 결과·경고·중복·실패·섹션별 채움률을 홈페이지에 표시한다.
+- [x] 문서 원문을 수정하지 않는 read-only preview와 버전 이력을 구현한다.
+- [ ] 다중 사용자·동일 파일명·동일 논문 ID의 격리 테스트를 추가한다.
+- [ ] 실제 DINCO 샘플과 테스트용 두 번째 Markdown으로 문서 library를 검증한다.
+- [x] 문서 library의 타입 검사·단위 테스트·화면 검증을 완료한다.
+
+## Approved implementation decision
+- 2026-08-28: 사용자 승인으로 private-by-default 문서 library 구현을 시작함.
+- 2026-08-28: 사용자의 여러 연구 주제는 Collection으로 관리하고, 한 문서는 여러 Collection에 중복 없이 소속될 수 있음.
+- 2026-08-28: 기존 Markdown 원본은 Obsidian/Git에서 계속 관리하고, 웹에는 검색용 사본과 인덱스를 저장함.
+- 2026-08-28: 공유 기능은 이번 모듈에서 제외하고, 문서·Collection·추론 결과는 workspace 소유자에게만 표시함.
+- 2026-08-28: 첨부된 DINCO_LLM.md를 실제 파싱 샘플로 사용하며 논문 내용은 임의 생성하지 않음.
+- 2026-08-28: note identity는 workspace-scoped internal ID를 사용하고 frontmatter의 id/arxiv/DOI는 external metadata로 보존함.
+- 2026-08-28: AI 추론·citation graph·OpenReview·T1/T2는 문서 library 검증 후 별도 모듈로 진행함.
+- 2026-08-28: 원문 Markdown은 read-only preview로 제공하고 웹에서 자동 편집·병합·덮어쓰기를 하지 않음.
+- 2026-08-28: `저자 명시`와 `내가 본 것`은 서로 다른 provenance이며, `내 맥락`과 `외부지식`은 AI 기본 근거에서 제외함.
+- 2026-08-28: 리뷰어 지적 heading이 DINCO 샘플에 없으면 missing 상태로 기록하고 생성하지 않음.
+- 2026-08-28: 첫 검증은 문서 업로드·파싱·version/hash·section fill rate·workspace isolation을 대상으로 함.
+- 2026-08-28: 실제 사용자 문서를 공개 자산이나 프로젝트 소스에 복사하지 않고 업로드 경로를 통해서만 처리함.
+- 2026-08-28: 구현 완료 후 문서 library 전용 checkpoint를 저장함.
+
+## Current approved scope
+- Private workspace, multiple collections, many-to-many collection membership.
+- Markdown upload, parse, raw storage, versioning, warning and telemetry.
+- DINCO sample provenance mapping and read-only preview.
+- No AI inference, no graph expansion, no OpenReview, no T1/T2, no gap extraction, no topic proposal.
+- No cross-user sharing in this module.
+- No automatic write-back to Obsidian/Git in this module.
+
+## Current implementation blocker checks
+- Need to use S3 storage helpers and verify their skill guidance before writing upload code.
+- Need to verify fullstack project conventions and existing auth/procedure files after context compaction.
+- Need to add schema migration through generated SQL and database execution only after schema is reviewed.
+- Need to use approved LLM integration only in a later inference phase; no model call in ingestion phase.
+- Need user-provided second real Markdown or clearly labeled fixture for the two-document sample check; do not fabricate research content.
+- Need to update completion checkboxes immediately after each feature and read todo before checkpoint.
+
+- [x] Markdown 링크(wikilink/URL/논문 식별자) 추출 규칙을 정의하고 note link index를 저장한다.
+- [x] 다중 사용자 동일 파일명·동일 논문 ID 격리 테스트를 추가한다.
+- [ ] 실제 DINCO + 두 번째 Markdown 업로드 검증을 추가한다.
+- [ ] 원문 근거를 연결한 AI 추론과 파생 결과 저장 계약을 설계·구현한다. (다음 모듈)
+- [ ] AI 추론은 원문 근거가 없을 때 추론으로 채우지 않고 ‘없음’ 또는 ‘근거 부족’으로 표시한다. (다음 모듈)
+- [ ] 원본 Markdown과 AI 파생 결과를 서로 다른 파일·버전으로 보존한다. (다음 모듈)
+- [ ] 추론 결과에 source note, 섹션, 인용 문장, 실행 시각, 모델, 사람 검토 상태를 기록한다. (다음 모듈)
+- [ ] 기존 노트 저장·추론 기능의 단위 테스트와 실제 사용자 흐름을 검증한다. (문서 library 완료 후 AI 모듈)
+
+## Gap correction history
+- 2026-08-28: 문서·섹션·hash 모델은 구현되었으나 Markdown 링크 추출·저장 모델이 없어 다음 checkpoint 전에 보완하기로 함.
+- 2026-08-28: AI 추론은 승인된 문서 library 범위 밖의 다음 모듈이므로 이번 checkpoint에서 완료로 표시하지 않음.
+- 2026-08-28: 다중 사용자 동일 파일명·동일 논문 ID 격리 테스트와 두 번째 Markdown sample 검증이 아직 필요함.

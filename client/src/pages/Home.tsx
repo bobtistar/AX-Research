@@ -1,4 +1,7 @@
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
+import NoteLibraryView from "@/components/NoteLibraryView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +38,9 @@ function Metric({ label, value, suffix }: { label: string; value: number; suffix
 }
 
 export default function Home() {
+  const { user } = useAuth();
   const [guestKey] = useState(getGuestKey);
+  const [view, setView] = useState<"seed" | "library">("seed");
   const utils = trpc.useUtils();
   const { data: venues = [] } = trpc.seed.venues.useQuery();
   const { data: runs = [] } = trpc.seed.listRuns.useQuery({ guestKey });
@@ -76,9 +81,10 @@ export default function Home() {
   const toggleSeed = (id: string) => setSelectedSeeds(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
   return <main className="industrial-grid min-h-screen bg-[#101010] text-zinc-100">
-    <header className="border-b border-zinc-700 bg-zinc-950/90 px-4 py-4 backdrop-blur md:px-8"><div className="mx-auto flex max-w-[1520px] items-center justify-between gap-6"><div className="flex items-center gap-4"><div className="grid h-9 w-9 place-items-center bg-zinc-100 text-xs font-black text-zinc-950">SF</div><div><p className="meta-face text-[9px] text-zinc-500">RESEARCH COLLECTOR // MODULE 01</p><p className="text-sm font-extrabold tracking-tight">SEED FOUNDRY</p></div></div><div className="hidden items-center gap-4 md:flex"><span className="meta-face text-[10px] text-zinc-500">WORKSPACE</span><span className="text-xs font-bold text-zinc-300">GUEST / {guestKey.slice(0, 8).toUpperCase()}</span><span className="h-2 w-2 bg-zinc-200" /></div></div></header>
+    <header className="border-b border-zinc-700 bg-zinc-950/90 px-4 py-4 backdrop-blur md:px-8"><div className="mx-auto flex max-w-[1520px] items-center justify-between gap-6"><div className="flex items-center gap-4"><div className="grid h-9 w-9 place-items-center bg-zinc-100 text-xs font-black text-zinc-950">SF</div><div><p className="meta-face text-[9px] text-zinc-500">RESEARCH COLLECTOR // MODULE 01</p><p className="text-sm font-extrabold tracking-tight">SEED FOUNDRY</p></div><div className="ml-2 hidden items-center gap-1 border-l border-zinc-700 pl-3 sm:flex"><button onClick={() => setView("seed")} className={cn("px-2 py-1 text-[10px] font-black transition-colors", view === "seed" ? "bg-zinc-100 text-zinc-950" : "text-zinc-500 hover:text-zinc-200")}>SEEDS</button><button onClick={() => setView("library")} className={cn("px-2 py-1 text-[10px] font-black transition-colors", view === "library" ? "bg-zinc-100 text-zinc-950" : "text-zinc-500 hover:text-zinc-200")}>NOTES</button></div></div><div className="hidden items-center gap-4 md:flex"><span className="meta-face text-[10px] text-zinc-500">WORKSPACE</span><span className="text-xs font-bold text-zinc-300">GUEST / {guestKey.slice(0, 8).toUpperCase()}</span><span className="h-2 w-2 bg-zinc-200" /></div></div></header>
 
-    <div className="mx-auto grid max-w-[1520px] grid-cols-1 lg:grid-cols-[235px_minmax(0,1fr)]">
+    <div className="flex justify-center border-b border-zinc-800 bg-zinc-950/70 px-4 py-2 sm:hidden"><div className="flex w-full max-w-sm gap-1"><button onClick={() => setView("seed")} className={cn("flex-1 py-2 text-[10px] font-black", view === "seed" ? "bg-zinc-100 text-zinc-950" : "bg-zinc-900 text-zinc-500")}>SEED FOUNDRY</button><button onClick={() => setView("library")} className={cn("flex-1 py-2 text-[10px] font-black", view === "library" ? "bg-zinc-100 text-zinc-950" : "bg-zinc-900 text-zinc-500")}>NOTE LIBRARY</button></div></div>
+    {view === "library" ? <NoteLibraryView authenticated={Boolean(user)} onSignIn={() => startLogin()} /> : <div className="mx-auto grid max-w-[1520px] grid-cols-1 lg:grid-cols-[235px_minmax(0,1fr)]">
       <aside className="border-b border-zinc-700 bg-zinc-950/75 p-4 lg:min-h-[calc(100vh-73px)] lg:border-b-0 lg:border-r lg:p-6"><p className="meta-face text-[10px] text-zinc-500">EXECUTION LOG</p><div className="mt-4 space-y-1">{runs.length === 0 ? <p className="py-6 text-xs leading-5 text-zinc-500">저장된 실행이 없습니다.<br />우측에서 새 작업을 시작하세요.</p> : runs.map(item => <button key={item.id} onClick={() => setSelectedRunId(item.id)} className={cn("group w-full border p-3 text-left transition-colors", selectedRunId === item.id ? "border-zinc-200 bg-zinc-800" : "border-transparent hover:border-zinc-700 hover:bg-zinc-900")}><p className="truncate text-xs font-bold text-zinc-200">{item.topic}</p><div className="mt-2 flex items-center justify-between"><span className="meta-face text-[8px] text-zinc-500">{statusLabel[item.status]}</span><span className="text-[10px] font-bold text-zinc-400">{item.seedCount}/10</span></div></button>)}</div><div className="mt-9 border-t border-zinc-800 pt-5"><p className="meta-face text-[10px] text-zinc-500">PIPELINE STATUS</p><div className="mt-4 space-y-3 text-xs"><div className="flex items-center justify-between text-zinc-200"><span>01 / Seed foundry</span><span className="bg-zinc-100 px-1.5 py-0.5 text-[9px] font-black text-zinc-950">LIVE</span></div><div className="flex items-center justify-between text-zinc-600"><span>02 / 1-hop graph</span><LockKeyhole className="h-3 w-3" /></div><div className="flex items-center justify-between text-zinc-600"><span>03 / OpenReview</span><LockKeyhole className="h-3 w-3" /></div><div className="flex items-center justify-between text-zinc-600"><span>04 / Tier & vault</span><LockKeyhole className="h-3 w-3" /></div></div></div></aside>
 
       <section className="min-w-0 p-4 md:p-8 lg:p-10">
@@ -114,6 +120,6 @@ export default function Home() {
         </div>
         {runLoading && <p className="meta-face mt-6 text-[10px] text-zinc-600">SYNCING EXECUTION STATE…</p>}
       </section>
-    </div>
+    </div>}
   </main>;
 }

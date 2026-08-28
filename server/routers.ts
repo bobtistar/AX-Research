@@ -2,13 +2,20 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createResearchRun, getResearchRun, listResearchRuns, lockSeeds, persistSearchResults, replaceQueries } from "./db";
+import { createResearchCollection, getNoteLibrary, getResearchNote, getResearchNoteSource, ingestMarkdownFiles } from "./noteDb";
 import { searchOpenAlex, toCandidateDraft, TOP_TIER_VENUES } from "./seedService";
 
 const topicInput = z.string().trim().min(3, "주제는 세 글자 이상 입력해 주세요.").max(500);
 const runIdInput = z.string().min(8).max(32);
 const guestKeyInput = z.string().uuid("유효한 게스트 워크스페이스 키가 필요합니다.");
+const noteIdInput = z.string().min(8).max(32);
+const collectionIdInput = z.string().min(8).max(32);
+const noteFileInput = z.object({
+  name: z.string().trim().min(1).max(512),
+  content: z.string().max(700_000, "파일 크기는 700KB 이하만 허용됩니다."),
+});
 
 export const appRouter = router({
   system: systemRouter,
@@ -71,6 +78,16 @@ export const appRouter = router({
       return persistSearchResults(input.guestKey, input.runId, drafts, { totalRetrieved, venueExcluded, duplicatesRemoved, failureCount });
     }),
     lockSeeds: publicProcedure.input(z.object({ guestKey: guestKeyInput, runId: runIdInput, candidateIds: z.array(z.string().min(8)).min(5).max(10) })).mutation(({ input }) => lockSeeds(input.guestKey, input.runId, Array.from(new Set(input.candidateIds)))),
+  }),
+  notes: router({
+    library: protectedProcedure.input(z.object({ collectionId: collectionIdInput.optional() })).query(({ ctx, input }) => getNoteLibrary(ctx.user.id, input.collectionId)),
+    get: protectedProcedure.input(z.object({ noteId: noteIdInput })).query(({ ctx, input }) => getResearchNote(ctx.user.id, input.noteId)),
+    source: protectedProcedure.input(z.object({ noteId: noteIdInput })).query(({ ctx, input }) => getResearchNoteSource(ctx.user.id, input.noteId)),
+    createCollection: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(160), description: z.string().trim().max(2_000).optional() })).mutation(({ ctx, input }) => createResearchCollection(ctx.user.id, input.name, input.description)),
+    ingest: protectedProcedure.input(z.object({ collectionId: collectionIdInput.optional(), files: z.array(noteFileInput).min(1, "Markdown 파일을 하나 이상 선택해 주세요.").max(20, "한 번에 20개 파일까지 업로드할 수 있습니다.") }).superRefine((input, context) => {
+      const totalBytes = input.files.reduce((total, file) => total + Buffer.byteLength(file.content, "utf8"), 0);
+      if (totalBytes > 4_000_000) context.addIssue({ code: "custom", path: ["files"], message: "한 번에 4MB까지 업로드할 수 있습니다." });
+    })).mutation(({ ctx, input }) => ingestMarkdownFiles(ctx.user.id, input.files, input.collectionId)),
   }),
 });
 

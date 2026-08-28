@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createResearchRun, getResearchRun, listResearchRuns, lockSeeds, persistSearchResults, replaceQueries } from "./db";
 import { createResearchCollection, getNoteLibrary, getResearchNote, getResearchNoteSource, ingestMarkdownFiles } from "./noteDb";
+import { getInferenceRun, listInferenceRuns, runEvidenceInference } from "./inferenceService";
 import { searchOpenAlex, toCandidateDraft, TOP_TIER_VENUES } from "./seedService";
 
 const topicInput = z.string().trim().min(3, "주제는 세 글자 이상 입력해 주세요.").max(500);
@@ -88,6 +89,9 @@ export const appRouter = router({
       const totalBytes = input.files.reduce((total, file) => total + Buffer.byteLength(file.content, "utf8"), 0);
       if (totalBytes > 4_000_000) context.addIssue({ code: "custom", path: ["files"], message: "한 번에 4MB까지 업로드할 수 있습니다." });
     })).mutation(({ ctx, input }) => ingestMarkdownFiles(ctx.user.id, input.files, input.collectionId)),
+    inferenceRuns: protectedProcedure.query(({ ctx }) => listInferenceRuns(ctx.user.id)),
+    inference: protectedProcedure.input(z.object({ noteIds: z.array(noteIdInput).min(1).max(10), question: z.string().trim().min(10).max(1_000) })).mutation(({ ctx, input }) => runEvidenceInference(ctx.user.id, input.noteIds, input.question)),
+    getInference: protectedProcedure.input(z.object({ runId: runIdInput })).query(({ ctx, input }) => getInferenceRun(ctx.user.id, input.runId)),
   }),
 });
 

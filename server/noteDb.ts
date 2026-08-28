@@ -47,7 +47,7 @@ function parseJson<T>(raw: string, fallback: T): T {
   }
 }
 
-async function getOrCreateWorkspace(userId: number) {
+export async function getOrCreateWorkspace(userId: number) {
   const db = await requireDb();
   const existing = (await db.select().from(workspaces).where(eq(workspaces.userId, userId)).limit(1))[0];
   if (existing) return { db, workspace: existing };

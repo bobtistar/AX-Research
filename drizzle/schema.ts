@@ -137,6 +137,26 @@ export const researchNoteLinks = mysqlTable("research_note_links", {
   foreignKey({ columns: [table.versionId], foreignColumns: [researchNoteVersions.id], name: "rnl_version_fk" }).onDelete("cascade"),
 ]);
 
+export const inferenceRunStatus = ["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "STALE"] as const;
+
+export const researchInferenceRuns = mysqlTable("research_inference_runs", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  workspaceId: varchar("workspaceId", { length: 32 }).notNull(),
+  question: text("question").notNull(),
+  noteVersionIds: text("noteVersionIds").notNull(),
+  model: varchar("model", { length: 160 }).notNull(),
+  promptVersion: varchar("promptVersion", { length: 32 }).notNull(),
+  status: mysqlEnum("status", inferenceRunStatus).default("RUNNING").notNull(),
+  resultJson: text("resultJson"),
+  evidenceCount: int("evidenceCount").default(0).notNull(),
+  missingCount: int("missingCount").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("inference_runs_workspace_idx").on(table.workspaceId, table.createdAt),
+  foreignKey({ columns: [table.workspaceId], foreignColumns: [workspaces.id], name: "rir_workspace_fk" }).onDelete("cascade"),
+]);
+
 export const researchCollectionNotes = mysqlTable("research_collection_notes", {
   collectionId: varchar("collectionId", { length: 32 }).notNull(),
   noteId: varchar("noteId", { length: 32 }).notNull(),
@@ -160,3 +180,4 @@ export type ResearchNoteVersion = typeof researchNoteVersions.$inferSelect;
 export type ResearchNoteSection = typeof researchNoteSections.$inferSelect;
 export type ResearchNoteLink = typeof researchNoteLinks.$inferSelect;
 export type ResearchCollectionNote = typeof researchCollectionNotes.$inferSelect;
+export type ResearchInferenceRun = typeof researchInferenceRuns.$inferSelect;

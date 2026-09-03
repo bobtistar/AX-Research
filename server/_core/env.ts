@@ -10,7 +10,12 @@ export const ENV = {
   appUrl: (process.env.APP_URL ?? "").replace(/\/+$/, ""),
   /** Signs the session cookie. Rotating it logs everyone out. */
   cookieSecret: required("JWT_SECRET", process.env.JWT_SECRET ?? ""),
-  databaseUrl: process.env.DATABASE_URL ?? "",
+  /**
+   * Railway's MySQL plugin publishes its connection string as MYSQL_URL, while most other
+   * hosts use DATABASE_URL. Accepting either removes a rename step that otherwise shows up
+   * as a database-less app with no obvious cause.
+   */
+  databaseUrl: process.env.DATABASE_URL || process.env.MYSQL_URL || "",
 
   googleClientId: required(
     "GOOGLE_CLIENT_ID",

@@ -23,6 +23,18 @@ export const systemRouter = router({
    */
   config: publicProcedure.query(async () => ({
     database: Boolean(await getDb()),
+    /**
+     * Which database-ish variables the host actually set — names only, never values.
+     * Hosts disagree on the name, and "no database" with an empty list means the variable
+     * is missing, while a non-empty list means it is present under a name we do not read.
+     */
+    databaseVars: [
+      "DATABASE_URL",
+      "MYSQL_URL",
+      "MYSQL_PUBLIC_URL",
+      "DATABASE_PUBLIC_URL",
+      "MYSQLHOST",
+    ].filter(name => Boolean(process.env[name])),
     googleLogin: Boolean(ENV.googleClientId && ENV.googleClientSecret),
     appUrl: Boolean(ENV.appUrl),
     sessionSecret: Boolean(ENV.cookieSecret),

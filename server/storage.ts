@@ -1,28 +1,52 @@
-// Preconfigured storage helpers for Manus WebDev templates
-// Uploads via Forge Server presigned URL to S3 (PUT direct).
-// Downloads return /manus-storage/{key} paths served via 307 redirect.
-
+/**
+ * Object storage on Cloudflare R2, reached through the S3 API.
+ *
+ * Replaces the Manus Forge storage helpers. The difference that matters is `storageDelete`:
+ * Forge exposed only put and presign, so deleting a note could never remove its raw
+ * Markdown copy — the leftovers were merely recorded in `deleted_storage_objects` for a
+ * purge path that did not exist. Owning the bucket makes deletion real, which is what
+ * lets the app honestly promise a user that removing a note removes the file.
+ */
+import { randomUUID } from "node:crypto";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ENV } from "./_core/env";
 
-function getForgeConfig() {
-  const forgeUrl = ENV.forgeApiUrl;
-  const forgeKey = ENV.forgeApiKey;
+const SIGNED_URL_TTL_SECONDS = 300;
 
-  if (!forgeUrl || !forgeKey) {
+let client: S3Client | null = null;
+
+function r2() {
+  if (client) return client;
+  const { r2AccountId, r2AccessKeyId, r2SecretAccessKey, r2Bucket } = ENV;
+  if (!r2AccountId || !r2AccessKeyId || !r2SecretAccessKey || !r2Bucket) {
     throw new Error(
-      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
+      "저장소 설정이 없습니다: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET를 설정하세요."
     );
   }
-
-  return { forgeUrl: forgeUrl.replace(/\/+$/, ""), forgeKey };
+  client = new S3Client({
+    region: "auto",
+    endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: r2AccessKeyId,
+      secretAccessKey: r2SecretAccessKey,
+    },
+  });
+  return client;
 }
 
 function normalizeKey(relKey: string): string {
   return relKey.replace(/^\/+/, "");
 }
 
+/** Keeps two uploads of the same filename from overwriting each other. */
 function appendHashSuffix(relKey: string): string {
-  const hash = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const hash = randomUUID().replace(/-/g, "").slice(0, 8);
   const lastDot = relKey.lastIndexOf(".");
   if (lastDot === -1) return `${relKey}_${hash}`;
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
@@ -31,67 +55,52 @@ function appendHashSuffix(relKey: string): string {
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
-  contentType = "application/octet-stream",
+  contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
-
-  // 1. Get presigned PUT URL from Forge
-  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
-  presignUrl.searchParams.set("path", key);
-
-  const presignResp = await fetch(presignUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-  });
-
-  if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
-  }
-
-  const { url: s3Url } = (await presignResp.json()) as { url: string };
-  if (!s3Url) throw new Error("Forge returned empty presign URL");
-
-  // 2. PUT file directly to S3
-  const blob =
-    typeof data === "string"
-      ? new Blob([data], { type: contentType })
-      : new Blob([data as any], { type: contentType });
-
-  const uploadResp = await fetch(s3Url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: blob,
-  });
-
-  if (!uploadResp.ok) {
-    throw new Error(`Storage upload to S3 failed (${uploadResp.status})`);
-  }
-
-  return { key, url: `/manus-storage/${key}` };
+  await r2().send(
+    new PutObjectCommand({
+      Bucket: ENV.r2Bucket,
+      Key: key,
+      Body: typeof data === "string" ? Buffer.from(data, "utf-8") : data,
+      ContentType: contentType,
+    })
+  );
+  return { key, url: `/storage/${key}` };
 }
 
-export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
+export async function storageGet(
+  relKey: string
+): Promise<{ key: string; url: string }> {
   const key = normalizeKey(relKey);
-  return { key, url: `/manus-storage/${key}` };
+  return { key, url: `/storage/${key}` };
 }
 
+/**
+ * A short-lived direct link to the object. The bucket stays private: without this the
+ * only way to serve a note would be to make the bucket public, where knowing a key would
+ * be enough to read someone else's research notes.
+ */
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = normalizeKey(relKey);
+  return getSignedUrl(
+    r2(),
+    new GetObjectCommand({
+      Bucket: ENV.r2Bucket,
+      Key: normalizeKey(relKey),
+    }),
+    { expiresIn: SIGNED_URL_TTL_SECONDS }
+  );
+}
 
-  const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
-  getUrl.searchParams.set("path", key);
-
-  const resp = await fetch(getUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-  });
-
-  if (!resp.ok) {
-    const msg = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Storage signed URL failed (${resp.status}): ${msg}`);
-  }
-
-  const { url } = (await resp.json()) as { url: string };
-  return url;
+/**
+ * Permanently removes an object. Deleting an absent key is treated as success so a
+ * retried purge does not fail on work it already finished.
+ */
+export async function storageDelete(relKey: string): Promise<void> {
+  await r2().send(
+    new DeleteObjectCommand({
+      Bucket: ENV.r2Bucket,
+      Key: normalizeKey(relKey),
+    })
+  );
 }

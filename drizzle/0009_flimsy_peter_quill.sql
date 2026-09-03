@@ -1,0 +1,1 @@
+ALTER TABLE `research_inference_runs` MODIFY COLUMN `status` enum('RUNNING','SUCCEEDED','PARTIAL','FAILED') NOT NULL DEFAULT 'RUNNING';

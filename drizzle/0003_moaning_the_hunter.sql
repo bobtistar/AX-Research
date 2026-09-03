@@ -61,8 +61,6 @@ CREATE TABLE `workspaces` (
 	CONSTRAINT `workspaces_userId_unique` UNIQUE(`userId`)
 );
 --> statement-breakpoint
-ALTER TABLE `research_collection_notes` ADD CONSTRAINT `research_collection_notes_collectionId_research_collections_id_fk` FOREIGN KEY (`collectionId`) REFERENCES `research_collections`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE `research_collection_notes` ADD CONSTRAINT `research_collection_notes_noteId_research_notes_id_fk` FOREIGN KEY (`noteId`) REFERENCES `research_notes`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `research_collections` ADD CONSTRAINT `research_collections_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `research_note_sections` ADD CONSTRAINT `research_note_sections_versionId_research_note_versions_id_fk` FOREIGN KEY (`versionId`) REFERENCES `research_note_versions`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `research_note_versions` ADD CONSTRAINT `research_note_versions_noteId_research_notes_id_fk` FOREIGN KEY (`noteId`) REFERENCES `research_notes`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

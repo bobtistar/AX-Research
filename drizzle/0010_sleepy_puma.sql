@@ -1,0 +1,3 @@
+ALTER TABLE `research_note_versions` ADD `versionNumber` int DEFAULT 1 NOT NULL;--> statement-breakpoint
+UPDATE `research_note_versions` v JOIN (SELECT id, ROW_NUMBER() OVER (PARTITION BY noteId ORDER BY createdAt, id) AS rn FROM `research_note_versions`) t ON t.id = v.id SET v.versionNumber = t.rn;--> statement-breakpoint
+ALTER TABLE `research_note_versions` ADD CONSTRAINT `research_note_versions_number_idx` UNIQUE(`noteId`,`versionNumber`);

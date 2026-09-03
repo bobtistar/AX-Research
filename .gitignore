@@ -8,11 +8,11 @@ build/
 *.dist
 
 # Environment variables
+# Local secrets. `.env*` catches every variant, including ones added later; the
+# .example file is the only one that belongs in the repo.
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
 # IDE and editor files
 .vscode/
@@ -112,3 +112,9 @@ temp/
 # Manus version file (auto-generated, not part of source)
 client/public/__manus__/version.json
 .project-config.json
+
+# Evaluation set and scores. Ignored by default because a gold case embeds the text of
+# private research notes. Committing them is what makes scores comparable across machines
+# and over time — opt in deliberately once you have decided the notes may be versioned.
+eval/gold/
+eval/results.tsv

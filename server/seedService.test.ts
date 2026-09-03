@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildQuerySuggestions, resolveVenue, toCandidateDraft, validateSeedSelectionCount } from "./seedService";
+import {
+  buildQuerySuggestions,
+  resolveVenue,
+  toCandidateDraft,
+  validateSeedSelectionCount,
+} from "./seedService";
 
 describe("seed query and venue verification", () => {
   it("creates exactly five distinct, editable query proposals", () => {
@@ -10,18 +15,31 @@ describe("seed query and venue verification", () => {
   });
 
   it("matches a known NeurIPS venue and rejects an unlisted venue", () => {
-    expect(resolveVenue("Advances in Neural Information Processing Systems")?.code).toBe("NeurIPS");
+    expect(
+      resolveVenue("Advances in Neural Information Processing Systems")?.code
+    ).toBe("NeurIPS");
     expect(resolveVenue("Journal of Forecasting")).toBeUndefined();
     expect(resolveVenue("Machine Learning")).toBeUndefined();
   });
 
   it("preserves DOI, venue, year and canonical paper URL for an eligible work", () => {
     const candidate = toCandidateDraft({
-      id: "https://openalex.org/W123", doi: "https://doi.org/10.1000/example", title: "A conformal method",
-      publication_year: 2024, cited_by_count: 18,
-      primary_location: { landing_page_url: "https://example.org", source: { display_name: "ICLR" } },
+      id: "https://openalex.org/W123",
+      doi: "https://doi.org/10.1000/example",
+      title: "A conformal method",
+      publication_year: 2024,
+      cited_by_count: 18,
+      primary_location: {
+        landing_page_url: "https://example.org",
+        source: { display_name: "ICLR" },
+      },
     });
-    expect(candidate).toMatchObject({ doi: "10.1000/example", venueCode: "ICLR", year: 2024, citedByCount: 18 });
+    expect(candidate).toMatchObject({
+      doi: "10.1000/example",
+      venueCode: "ICLR",
+      year: 2024,
+      citedByCount: 18,
+    });
   });
 
   it("accepts only an exact 5–10 seed target", () => {

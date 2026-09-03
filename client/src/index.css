@@ -49,21 +49,49 @@
 }
 
 @layer base {
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground antialiased; font-family: "Manrope", sans-serif; }
-  button, input { font: inherit; }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Manrope", sans-serif;
+  }
+  button,
+  input {
+    font: inherit;
+  }
 }
 
 .industrial-grid {
-  background-image: linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
-.display-face { font-family: "Archivo Black", Impact, sans-serif; }
-.meta-face { font-family: "DM Mono", monospace; letter-spacing: 0.12em; }
+.display-face {
+  font-family: "Archivo Black", Impact, sans-serif;
+}
+.meta-face {
+  font-family: "DM Mono", monospace;
+  letter-spacing: 0.12em;
+}
 
 @media (prefers-reduced-motion: no-preference) {
-  .reveal { animation: rise-in 360ms cubic-bezier(0.23, 1, 0.32, 1) both; }
-  .reveal-delay { animation: rise-in 420ms 70ms cubic-bezier(0.23, 1, 0.32, 1) both; }
-  @keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .reveal {
+    animation: rise-in 360ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .reveal-delay {
+    animation: rise-in 420ms 70ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }

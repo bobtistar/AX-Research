@@ -1,10 +1,44 @@
+function required(name: string, value: string) {
+  if (!value && process.env.NODE_ENV === "production") {
+    console.error(`[ENV] ${name} is not set. The app will not work correctly.`);
+  }
+  return value;
+}
+
 export const ENV = {
-  appId: process.env.VITE_APP_ID ?? "",
-  cookieSecret: process.env.JWT_SECRET ?? "",
+  /** Public origin of this deployment, e.g. https://ax-research-production.up.railway.app */
+  appUrl: (process.env.APP_URL ?? "").replace(/\/+$/, ""),
+  /** Signs the session cookie. Rotating it logs everyone out. */
+  cookieSecret: required("JWT_SECRET", process.env.JWT_SECRET ?? ""),
   databaseUrl: process.env.DATABASE_URL ?? "",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+
+  googleClientId: required(
+    "GOOGLE_CLIENT_ID",
+    process.env.GOOGLE_CLIENT_ID ?? ""
+  ),
+  googleClientSecret: required(
+    "GOOGLE_CLIENT_SECRET",
+    process.env.GOOGLE_CLIENT_SECRET ?? ""
+  ),
+  /**
+   * Google account IDs allowed to sign in, comma separated. Empty means anyone with a
+   * Google account may sign in. Set this while the app holds only your own notes.
+   */
+  allowedEmails: (process.env.ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map(value => value.trim().toLowerCase())
+    .filter(Boolean),
+  /** The first account to sign in with this email becomes admin. */
+  ownerEmail: (process.env.OWNER_EMAIL ?? "").trim().toLowerCase(),
+
+  /** Fallback Gemini key, used when a user has not supplied their own. */
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  inferenceModel: process.env.INFERENCE_MODEL?.trim() ?? "",
+
+  r2AccountId: process.env.R2_ACCOUNT_ID ?? "",
+  r2AccessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+  r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  r2Bucket: process.env.R2_BUCKET ?? "",
+
   isProduction: process.env.NODE_ENV === "production",
-  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
 };

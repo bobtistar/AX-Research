@@ -22,9 +22,11 @@
 - [x] AI 추론은 원문 근거가 없을 때 추론으로 채우지 않고 ‘없음’ 또는 ‘근거 부족’으로 표시한다.
 - [ ] 원본 Markdown과 AI 파생 결과를 서로 다른 파일·버전으로 보존한다.
 - [x] 추론 결과에 source note, 섹션, 인용 문장, 실행 시각, 모델, 사람 검토 상태를 기록한다.
+- [x] 사람 검토(승인·거부)를 cell 단위로 저장하고, 거부 시 원문의 옳은 인용 문장을 함께 남긴다.
 - [ ] 기존 노트 저장·추론 기능의 단위 테스트와 실제 사용자 흐름을 검증한다.
 
 ## Research automation design history
+
 - 2026-08-28: 기존 Obsidian Markdown을 원본으로 유지하고 웹은 저장·인덱스·근거 기반 추론 계층으로 동작하는 방향을 검토하기 시작함.
 - 2026-08-28: 로그인 없는 게스트 워크스페이스는 브라우저 저장소 삭제·기기 변경 시 접근을 잃을 수 있으므로 장기 보관에는 별도 백업·동기화 전략이 필요함.
 - 2026-08-28: AI 결과는 원본 노트를 덮어쓰지 않고 별도 파생 결과로 저장하는 방향을 우선함.
@@ -581,6 +583,7 @@
 - 2026-08-28: end of current design history.
 
 ## Pending decisions
+
 - Canonical source: Obsidian/Git, web storage, or local-only.
 - Server copy: allowed or prohibited.
 - Inference location: web, local CLI, or hybrid.
@@ -593,6 +596,7 @@
 - Whether the user will provide a ZIP or two representative Markdown files for the first parser validation.
 
 ## Approval request
+
 - Recommended: `A / canonical Obsidian·Git / 웹 검색 사본 저장 / 웹 근거 기반 추론 / 별도 derived AI 파일 / ZIP 업로드 시작`
 - Privacy-first alternative: `B / canonical Obsidian·Git / 웹 원문 미저장 / 로컬 CLI 추론 / 결과 bundle만 홈페이지 검토`
 - Experimental alternative: `C / 브라우저 로컬 vault 연결 / 명시적 파일 권한 / 자동 동기화 없음`
@@ -608,6 +612,7 @@
 - [ ] 다중 사용자 문서 관리 설계 승인 전에는 실제 Markdown 업로드·AI 추론 구현을 시작하지 않는다.
 
 ## Multi-user note management design history
+
 - 2026-08-28: 사용자는 홈페이지가 여러 사용자를 대상으로 하므로 사용자별 관심 논문과 여러 연구 주제를 독립적으로 관리해야 한다고 уточ정함.
 - 2026-08-28: 첨부된 `DINCO_LLM.md`는 기존의 고정 섹션 스키마와 다르게 `한계`, `저자 명시`, `내가 본 것`, `내 맥락`을 사용하므로 parser가 heading alias와 provenance를 보존해야 함.
 - 2026-08-28: `저자 명시`는 논문 원문에 근거한 author limitation으로 취급하고 `내가 본 것`은 사용자 해석·외부지식 표기로 별도 분리해야 함.
@@ -882,6 +887,7 @@
 - 2026-08-28: end of current multi-user note management design history.
 
 ## Multi-user design decision gate
+
 - Sharing: default private-only unless user explicitly requests collaboration.
 - Collections: one user/workspace can have many collections, and one note can belong to many collections without file duplication.
 - Identity: internal workspace-scoped note ID plus preserved external IDs (`id`, `arxiv`, DOI/OpenAlex when present).
@@ -893,6 +899,7 @@
 - Long-term identity question: decide whether guest workspace remains acceptable or account/recovery is required.
 
 ## Approval request
+
 - Recommended MVP: `private-by-default / multiple collections / one note can belong to many collections / Obsidian·Git canonical / web searchable copy allowed / manual web inference later / separate derived results`
 - Privacy-first: `private-by-default / local-only Markdown / local CLI inference / website receives result bundle only`
 - Collaboration later: `private MVP first / explicit collection sharing later / public projection separate from private note`
@@ -910,6 +917,7 @@
 - [x] 문서 library의 타입 검사·단위 테스트·화면 검증을 완료한다.
 
 ## Approved implementation decision
+
 - 2026-08-28: 사용자 승인으로 private-by-default 문서 library 구현을 시작함.
 - 2026-08-28: 사용자의 여러 연구 주제는 Collection으로 관리하고, 한 문서는 여러 Collection에 중복 없이 소속될 수 있음.
 - 2026-08-28: 기존 Markdown 원본은 Obsidian/Git에서 계속 관리하고, 웹에는 검색용 사본과 인덱스를 저장함.
@@ -925,6 +933,7 @@
 - 2026-08-28: 구현 완료 후 문서 library 전용 checkpoint를 저장함.
 
 ## Current approved scope
+
 - Private workspace, multiple collections, many-to-many collection membership.
 - Markdown upload, parse, raw storage, versioning, warning and telemetry.
 - DINCO sample provenance mapping and read-only preview.
@@ -933,6 +942,7 @@
 - No automatic write-back to Obsidian/Git in this module.
 
 ## Current implementation blocker checks
+
 - Need to use S3 storage helpers and verify their skill guidance before writing upload code.
 - Need to verify fullstack project conventions and existing auth/procedure files after context compaction.
 - Need to add schema migration through generated SQL and database execution only after schema is reviewed.
@@ -950,6 +960,7 @@
 - [ ] 기존 노트 저장·추론 기능의 단위 테스트와 실제 사용자 흐름을 검증한다. (문서 library 완료 후 AI 모듈)
 
 ## Gap correction history
+
 - 2026-08-28: 문서·섹션·hash 모델은 구현되었으나 Markdown 링크 추출·저장 모델이 없어 다음 checkpoint 전에 보완하기로 함.
 - 2026-08-28: AI 추론은 승인된 문서 library 범위 밖의 다음 모듈이므로 이번 checkpoint에서 완료로 표시하지 않음.
 - 2026-08-28: 다중 사용자 동일 파일명·동일 논문 ID 격리 테스트와 두 번째 Markdown sample 검증이 아직 필요함.
@@ -960,3 +971,94 @@
 - [ ] AI 추론 결과를 원본과 분리된 Markdown/JSON 파일로 export한다.
 - [ ] DINCO_LLM.md 기반 실제 업로드·추론 사용자 흐름을 검증한다.
 - [ ] inference history와 derived export의 회귀 테스트를 추가한다.
+
+## Priority remediation round (2026-08-28)
+
+- [x] Obsidian frontmatter의 YAML block sequence(`tags:` 아래 `- item`)를 배열로 파싱한다.
+- [x] 추론 근거 부족 판정을 질문 관련 section으로 한정하고 SUCCEEDED 상태를 도달 가능하게 만든다.
+- [x] 근거 부족 사유(section_missing / no_quote_found / source_unavailable)를 서버에서 구분해 계산한다.
+- [x] 문서 목록 section chip을 warning 문자열 역파싱 대신 서버 `sectionPresence`로 판정한다.
+- [x] 프로덕션에서 호출되지 않던 `noteAccess.ts`와 그 테스트를 제거한다.
+- [x] 클라이언트가 보낸 noteId가 다른 workspace 문서를 읽던 추론 경로를 차단한다.
+- [x] workspace scoping 회귀를 실제로 잡는 정적 guard 테스트를 추가한다.
+- [x] 실 DB 기반 cross-workspace 격리 테스트를 추가한다. (`RUN_DB_TESTS=1` 필요)
+- [x] 노트·Collection·게스트 실행 이력 삭제 경로를 구현한다.
+- [x] prettier를 실제로 적용하고 vendored/generated 파일을 ignore에 추가한다.
+- [x] NoteLibraryView에서 source inspector와 inference panel을 별도 컴포넌트로 분리한다.
+- [x] 게스트 실행 이력을 계정으로 승계하는 claim 경로를 구현한다.
+
+### Blocked on user decision
+
+- [ ] 삭제된 노트의 S3 원문 사본 정리 — Forge storage helper에 delete가 없어 key만 반환하고 있음.
+- [ ] 고정한 seed에서 노트 stub을 생성할지 — canonical source를 Obsidian/Git로 유지하는 기존 승인과 충돌 가능.
+- [ ] 추론 모델 ID 고정 — 현재 `chooseModel()`이 카탈로그 순서에 의존해 재현성이 없음.
+- [ ] 인증 없는 `seed.searchCandidates`의 레이트 리밋 정책과 OpenAlex `mailto` 연락처.
+
+### Still open from earlier rounds
+
+- [ ] AI 추론 결과를 원본과 분리된 Markdown/JSON 파일로 export한다.
+- [ ] evidence ID를 실행 결과 JSON 밖의 테이블로 영속화해 사후 재검증을 가능하게 한다.
+- [ ] 인용 단위를 section 전체가 아닌 문장/offset 단위로 좁힌다.
+- [ ] DINCO_LLM.md 기반 실제 업로드·추론 사용자 흐름을 브라우저에서 검증한다.
+
+### Evaluation loop (autoresearch 구조 도입, 3단계까지 완료)
+
+- [x] 0단계: 추론 결과의 cell(claim / missing)별 사람 승인·거부를 저장한다. 거부는 원문의 옳은 인용 문장을 필수로 받는다.
+- [x] 1단계: 검토된 cell을 `eval/gold/`의 고정 평가 집합으로 승격하는 export 경로를 만든다. (`pnpm eval:export`)
+- [x] 2단계: system 프롬프트·section 키워드·근거 선택 정책을 `server/inferencePrompt.ts` 한 파일로 분리한다(수정 가능한 유일한 파일).
+- [x] 3단계: `pnpm eval` — gold set 전량 실행 후 환각률·missing 정확도·section 혼동률·과보수율과 합성 점수를 `eval/results.tsv`에 append 한다.
+- [ ] 4단계: 루트 `program.md`에 수정 → 평가 → 유지/폐기 루프 지침을 고정한다.
+- [ ] 선행 확인: baseline을 3회 반복 실행해 점수 분산을 먼저 측정한다(`pnpm eval --repeat 3`). 개선폭이 분산보다 작으면 그 실험은 무효로 본다.
+- [x] 실제 DB(MySQL 8)에서 마이그레이션 적용과 검토 저장을 검증한다. 빈 DB에서 9장 전부 적용, 통합 테스트 5개 포함 79개 통과.
+- [x] 과거 inference run을 목록에서 열어 이어서 검토할 수 있게 한다. 저장된 result에 타입을 부여하고, 선택된 run을 URL에 보관함.
+- [x] 추론 결과가 오래된 note version을 참조하면 stale로 표시한다. 계산값으로 노출하며 검토는 계속 허용함.
+- [x] 노트 버전에 순번을 부여해 '최신 버전' 판정을 확정적으로 만든다.
+- [ ] `pnpm eval:export`를 실제 검토 데이터로 실행한다.
+- [ ] gold set 일부를 `eval/holdout`으로 분리해 과적합을 확인한다.
+
+### Railway 이사 (2026-09-03)
+
+- [x] Manus 전용 모듈 삭제 — dataApi, heartbeat, imageGeneration, map, voiceTranscription, notification, sdk, manusTypes.
+- [x] 로그인을 Manus OAuth → Google OAuth로 교체. 세션 쿠키는 `jose`로 직접 서명.
+- [x] AI 호출을 Forge 중계 → Gemini 직접 호출로 교체. `temperature: 0` 고정.
+- [x] 파일 저장소를 Forge → Cloudflare R2(S3 API)로 교체.
+- [x] **원문 진짜 삭제 구현.** Forge에는 delete가 없어 불가능했던 것.
+- [x] BYOK — 사용자별 Gemini 키를 AES-256-GCM으로 암호화 저장.
+- [x] 월 사용량 제한 (FREE 20회 / PRO 300회). 본인 키 사용자는 제외.
+- [x] 부팅 시 마이그레이션 자동 실행. 프로덕션에서는 지정된 PORT를 그대로 바인딩.
+- [ ] Railway에 환경변수 입력 후 실제 로그인·업로드·추론 확인 ← 사용자
+- [ ] 모델 ID 확정 (`INFERENCE_MODEL`) — AI Studio에서 확인 후
+- [ ] 계정 삭제 · 내보내기 · Stripe 결제
+
+- 2026-09-03: 로그인 시작을 클라이언트에서 서버(`/api/oauth/start`)로 옮김. nonce가 브라우저 JS를 거치지 않아 쿠키와 `state`가 어긋날 수 없게 됨 — 기존 구현이 긴 주석으로 경고하던 실패 모드가 구조적으로 사라짐.
+- 2026-09-03: 관리자 판정을 `OWNER_OPEN_ID`(플랫폼 불투명 ID) → `OWNER_EMAIL`로 바꿈. 해당 계정이 한 번도 로그인하기 전에 설정할 수 있어야 하기 때문.
+- 2026-09-03: 사용자 API 키는 AES-256-GCM으로 암호화해 저장하고 평문으로 반환하지 않음(끝 4자리 힌트만). DB 덤프 하나로 모든 사용자의 과금 크레덴셜이 새어나가면 안 됨. 암호화 키는 JWT_SECRET에서 파생하되 세션 서명과 다른 라벨을 씀.
+- 2026-09-03: 사용량 확인을 모델 호출 **전에** 배치함. 거부된 실행은 비용도 기록도 남기지 않음. 반대로 사용량 기록은 성공·실패 **양쪽**에 남김 — 실패한 호출도 토큰을 썼고, 실패만 무료면 재시도 루프가 예산을 무제한으로 태울 수 있음.
+- 2026-09-03: Gemini는 JSON Schema의 `additionalProperties`를 거부하므로 `toGeminiSchema`에서 걷어냄. 호출부 스키마는 그대로 두고 어댑터에서 흡수함.
+- 2026-09-03: 프로덕션에서 빈 포트를 찾아다니지 않고 지정된 PORT를 그대로 바인딩하도록 바꿈. 호스트가 라우팅하는 포트와 다른 곳에서 조용히 듣고 있는 상황을 막음.
+
+- 2026-09-01: 사람 검토 상태를 run에 저장된 단일 플래그가 아니라 `research_inference_reviews`의 cell 단위 행으로 관리하고, run 수준 상태는 계산으로만 노출하기로 함. 두 곳에 같은 판단을 저장하면 재검토 시 어긋나고, 평가 집합은 cell 단위 라벨에서만 만들어지기 때문.
+- 2026-09-01: 거부 시 원문 인용을 필수로 받는 이유는 "틀렸다"만 남은 라벨로는 평가 사례를 만들 수 없기 때문임. 근거가 실제로 없으면 '근거 없음'을 명시적으로 적게 함.
+- 2026-09-01: 라벨은 자신이 평가한 note version·promptVersion·model을 함께 복사해 보관함. 재업로드나 프롬프트 변경 후에도 옛 라벨이 옛 입력에 붙어 있어야 하기 때문.
+- 2026-09-03: 평가 집합은 note ID가 아니라 원문 section 텍스트를 통째로 얼려서 보관함. 노트를 다시 올리거나 지워도 같은 입력으로 채점되어야 두 실행이 비교 가능하기 때문이며, 덕분에 `pnpm eval`은 DB 없이 돈다.
+- 2026-09-03: 네 가지 검토 조합을 모두 `SUPPORTED`(인용 포함) 또는 `ABSENT` 한 라벨로 정규화함. '근거 부족 판정을 거부했는데 근거도 제시하지 않은' 자기모순 검토는 추측하지 않고 건너뛰며 이유를 보고함.
+- 2026-09-03: `server/inferencePrompt.ts`만 수정 대상이고, `validateInferenceClaims`와 `computeMissingSections`는 심판이므로 옮기지 않음. 조정 가능한 심판은 아무것도 채점하지 못함. section 어휘는 스키마이므로 `shared/sections.ts`로 분리함.
+- 2026-09-03: 점수는 `1 − (2·환각률 + 혼동률 + 0.5·과보수율)`. 환각에 2배 가중치를 준 이유는 근거 없는 답변이 이 프로젝트가 막으려는 유일한 실패이고, 침묵은 사람이 복구할 수 있지만 환각은 그렇지 않기 때문.
+- 2026-09-03: scope에서 빠진 cell(`UNCOVERED`)을 miss로 계산함. 그러지 않으면 scope를 좁히는 것만으로 점수가 오르는 지름길이 생김.
+- 2026-09-03: 근거 section 자체가 없는 ABSENT cell(`TRIVIAL_ABSENT`)은 점수 분모에서 제외함. 스모크 테스트에서 발견한 문제로, 근거를 주지 않은 section은 심판이 어차피 답변을 통과시키지 않으므로 실패가 불가능하고, 그런 cell을 성공으로 세면 빈 section이 많은 gold set이 어떤 프롬프트에도 높은 점수를 줌.
+- 2026-09-03: 심판이 교차 section 인용을 이미 차단하므로 `CONFUSED`는 거의 발생하지 않음. 지표로 남긴 이유는 `selectEvidence`가 수정 가능한 파일에 있어, 두 section을 한 덩어리 근거로 합치는 변경이 들어오면 이 항목이 켜지는 tripwire가 되기 때문.
+- 2026-09-03: 게이트웨이에 temperature 파라미터가 없어 같은 프롬프트도 실행마다 결과가 달라짐. 따라서 `--repeat`로 분산을 먼저 재는 것이 선택이 아니라 전제임.
+- 2026-09-03: `eval/gold/`와 `eval/results.tsv`는 원문 노트 텍스트를 담고 있어 기본적으로 gitignore 함. 커밋 여부는 사용자가 결정하며, 커밋해야 기기·시점 간 점수 비교가 성립함.
+- 2026-09-03: 빈 DB에서 마이그레이션을 처음부터 적용해보니 0002와 0003이 각각 실패했음. **이 저장소의 DB는 한 번도 마이그레이션 순서대로 지어진 적이 없었음** — 기존 DB는 중간에 손으로 때워 만든 상태였다는 뜻. 두 오류 모두 이번 작업 이전, seed 모듈 시기부터 있던 것.
+- 2026-09-03: 0002는 `research_runs_user_created_idx`를 지우려 하는데 그 색인이 `userId` 외래키를 지탱하는 유일한 색인이라 MySQL이 거부함(ER_DROP_INDEX_FK). `userId` 단독 색인을 먼저 만든 뒤 지우도록 한 줄 추가함.
+- 2026-09-03: 0003의 `research_collection_notes` 외래키 이름이 65자로 MySQL 상한 64자를 넘김(ER_TOO_LONG_IDENT). 0004가 이미 `rcn_collection_fk`/`rcn_note_fk`라는 짧은 이름으로 같은 외래키를 다시 달고 있어 0003의 두 줄을 삭제함. 과거에 누군가 이 오류를 만나 0004를 덧붙였지만 0003 자체는 고치지 않았던 것.
+- 2026-09-03: 사용자가 A안(옛 마이그레이션 직접 수정)을 선택함. 지켜야 할 운영 DB가 없다는 판단. 새 마이그레이션을 덧붙이는 B안은 살아 있는 DB를 건드리지 않는 대신 이력이 지저분해지므로 선택하지 않음.
+- 2026-09-03: 빈 DB 재구축을 회귀 검사로 삼기로 함. 절차는 `.env.example`에 기록. `drizzle/`를 건드릴 때마다 다시 돌려야 하며, 타입 검사와 단위 테스트로는 이 부류의 오류가 절대 잡히지 않음.
+- 2026-09-03: 과거 run을 검토할 수 없던 진짜 원인은 UI 누락이 아니라 타입이었음. 읽기 경로가 `Record<string, unknown>`을 돌려줘 화면 부품이 `.claims`를 꺼낼 수 없었고, 그래서 목록 화면을 만들 수가 없었던 것. `StoredInferenceResult`를 선언해 읽기·쓰기 경로가 같은 모양을 쓰게 함.
+- 2026-09-03: 결과 객체를 컴포넌트 state로 들고 있던 것을 없애고 `runId`만 남김. 서버 쿼리가 화면의 단일 출처가 되어, 방금 실행한 run과 과거 run이 같은 코드 경로로 그려짐. 과거 run 검토가 별도 기능이 아니라 자동으로 따라옴.
+- 2026-09-03: 선택된 run을 URL 쿼리(`?run=`)에 보관함. 새로고침·링크 공유·뒤로가기가 함께 해결되며, 새로고침으로 선택이 사라지는 것이 검토를 놓치게 만든 원인이었음.
+- 2026-09-03: 통합 테스트가 `as` 캐스트의 허점을 잡음 — `question`이 없는 옛 행이 타입상 `string`인데 런타임에는 `undefined`였음. `normalizeStoredResult`로 보정하되 **거부하지 않음.** 읽을 수 없어 사라지는 것이 지금 고치는 버그 자체이므로, 엄격한 거부는 같은 실패를 반복하는 것.
+- 2026-09-03: 오래된 결과 표시(staleness)를 `status` 컬럼이 아니라 **계산값**으로 구현함. staleness는 run이 아니라 **노트가** 바뀔 때 변하므로, 저장하면 다음 업로드 순간부터 거짓이 되고 매 ingest마다 과거 run을 전부 갱신해야 함. 스키마의 미사용 `STALE` 값은 제거함(0009) — 발화하지 않는 값이 남아 있으면 다음 사람이 거기에 도장을 찍으려다 같은 함정에 빠짐.
+- 2026-09-03: '재업로드로 판이 바뀜'(stale)과 '노트가 사라짐'(source_missing)을 분리함. 전자는 재실행으로 복구되고 후자는 안 됨.
+- 2026-09-03: stale run도 **검토를 허용**함. 화면의 근거는 그 버전의 실제 텍스트이므로 그에 대한 판단은 여전히 유효한 라벨이고, gold set은 텍스트를 통째로 얼려 보관하므로 라벨과 입력의 짝이 영구히 맞음. 막으면 라벨만 잃음.
+- 2026-09-03: staleness 통합 테스트가 **기존 잠재 버그**를 드러냄 — `createdAt`이 초 단위 TIMESTAMP인데 '이 노트의 최신 버전'을 다섯 군데에서 이 값으로 판단하고 있었음. 같은 초에 두 번 업로드하면 최신 버전이 미정이 되어 잘못된 원문이 AI에 전달될 수 있었음. `versionNumber` 순번 컬럼을 추가(0010, 기존 행은 createdAt 순으로 backfill)하고 다섯 군데를 전부 순번 정렬로 교체함. 사용자에게 'v2 → v3'으로 보여줄 수 있는 부수 효과도 있음.

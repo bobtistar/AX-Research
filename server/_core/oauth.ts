@@ -88,7 +88,16 @@ export function registerOAuthRoutes(app: Express) {
       res.redirect("/");
     } catch (caught) {
       console.error("[OAuth] callback failed", caught);
-      res.status(500).send("로그인 처리 중 오류가 발생했습니다.");
+      // The cause is almost always configuration — a missing database, a rejected token
+      // exchange — and a bare "something went wrong" sends the operator hunting through
+      // logs for something the page could have told them.
+      const detail =
+        caught instanceof Error ? caught.message : "알 수 없는 오류";
+      res
+        .status(500)
+        .send(
+          `로그인 처리 중 오류가 발생했습니다.\n\n${detail}\n\n설정 상태는 /api/trpc/system.config?input=%7B%7D 에서 확인할 수 있습니다.`
+        );
     }
   });
 }

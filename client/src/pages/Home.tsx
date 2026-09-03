@@ -111,7 +111,7 @@ function Metric({
 }
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const [guestKey] = useState(getGuestKey);
   const [view, setView] = useState<"seed" | "library">("seed");
   const utils = trpc.useUtils();
@@ -314,14 +314,45 @@ export default function Home() {
               </button>
             </div>
           </div>
-          <div className="hidden items-center gap-4 md:flex">
-            <span className="meta-face text-[10px] text-zinc-500">
-              WORKSPACE
-            </span>
-            <span className="text-xs font-bold text-zinc-300">
-              GUEST / {guestKey.slice(0, 8).toUpperCase()}
-            </span>
-            <span className="h-2 w-2 bg-zinc-200" />
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-3 md:flex">
+              <span className="meta-face text-[10px] text-zinc-500">
+                WORKSPACE
+              </span>
+              <span className="max-w-[180px] truncate text-xs font-bold text-zinc-300">
+                {user
+                  ? (user.email ?? user.name ?? "SIGNED IN")
+                  : `GUEST / ${guestKey.slice(0, 8).toUpperCase()}`}
+              </span>
+              <span
+                className={cn(
+                  "h-2 w-2",
+                  user ? "bg-zinc-200" : "border border-zinc-600"
+                )}
+              />
+            </div>
+            {/*
+              Signed-out is the default state and has to be visible: notes, inference and
+              review all sit behind an account, so a visitor who cannot see a way in has no
+              way to reach any of it.
+            */}
+            {authLoading ? (
+              <span className="meta-face text-[10px] text-zinc-600">···</span>
+            ) : user ? (
+              <button
+                onClick={() => void logout()}
+                className="border border-zinc-700 px-3 py-1.5 font-mono text-[10px] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+              >
+                로그아웃
+              </button>
+            ) : (
+              <button
+                onClick={() => startLogin()}
+                className="bg-zinc-100 px-3 py-1.5 font-mono text-[10px] font-black text-zinc-950 transition-colors hover:bg-zinc-300"
+              >
+                Google로 로그인
+              </button>
+            )}
           </div>
         </div>
       </header>

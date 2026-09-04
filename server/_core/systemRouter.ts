@@ -22,6 +22,17 @@ export const systemRouter = router({
    * DATABASE_URL — and this turns that into one look.
    */
   config: publicProcedure.query(async () => ({
+    /**
+     * The commit this process was built from, injected by the host. Without it there is
+     * no way to tell a deployment that did not happen from one that happened and did not
+     * fix anything — the two look identical from outside, and we spent several rounds
+     * unable to distinguish them.
+     */
+    commit: (
+      process.env.RAILWAY_GIT_COMMIT_SHA ??
+      process.env.GIT_COMMIT_SHA ??
+      ""
+    ).slice(0, 7),
     database: Boolean(await getDb()),
     /**
      * Which database-ish variables the host actually set — names only, never values.

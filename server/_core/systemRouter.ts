@@ -52,6 +52,10 @@ export const systemRouter = router({
      * Hosts disagree on the name, and "no database" with an empty list means the variable
      * is missing, while a non-empty list means it is present under a name we do not read.
      */
+    /** Variables that exist but hold an empty value — an unresolved host reference. */
+    databaseVarsEmpty: ["DATABASE_URL", "MYSQL_URL", "MYSQL_PUBLIC_URL"].filter(
+      name => name in process.env && !process.env[name]
+    ),
     databaseVars: [
       "DATABASE_URL",
       "MYSQL_URL",

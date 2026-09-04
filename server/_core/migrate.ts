@@ -29,9 +29,17 @@ export function migrationStatus() {
 
 export async function runMigrations(): Promise<MigrationStatus> {
   if (!ENV.databaseUrl) {
+    // An unresolved Railway reference stores an empty string rather than failing, so the
+    // variable is present and blank. Reporting that as "not set" sent several rounds of
+    // debugging after a variable that was already there.
+    const present = ["DATABASE_URL", "MYSQL_URL"].filter(
+      name => name in process.env
+    );
     lastStatus = {
       state: "skipped",
-      reason: "DATABASE_URL / MYSQL_URL 이 설정되지 않았습니다.",
+      reason: present.length
+        ? `${present.join(", ")} 변수는 있으나 값이 비어 있습니다. Railway 참조가 풀리지 않았을 때 빈 문자열이 들어갑니다 — 값을 직접 붙여넣거나 \${{서비스명.MYSQL_URL}} 형식을 다시 확인하세요.`
+        : "DATABASE_URL / MYSQL_URL 변수 자체가 없습니다.",
     };
     console.warn("[Migrate]", lastStatus.reason);
     return lastStatus;

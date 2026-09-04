@@ -2,6 +2,7 @@ import { z } from "zod";
 import { publicProcedure, router } from "./trpc";
 import { ENV } from "./env";
 import { getDb } from "../db";
+import { migrationStatus } from "./migrate";
 
 export const systemRouter = router({
   health: publicProcedure
@@ -34,6 +35,8 @@ export const systemRouter = router({
       ""
     ).slice(0, 7),
     database: Boolean(await getDb()),
+    /** Why the schema is or is not in place — the usual reason a database looks absent. */
+    migration: migrationStatus(),
     /**
      * Which database-ish variables the host actually set — names only, never values.
      * Hosts disagree on the name, and "no database" with an empty list means the variable

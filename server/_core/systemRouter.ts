@@ -38,6 +38,16 @@ export const systemRouter = router({
     /** Why the schema is or is not in place — the usual reason a database looks absent. */
     migration: migrationStatus(),
     /**
+     * Every environment variable name that could plausibly be a database setting, so a
+     * typo, a variable saved on the wrong service, or one that never saved at all can be
+     * told apart without guessing. Names only — values are never read here. `envCount`
+     * shows whether the process received any configuration at all.
+     */
+    envNames: Object.keys(process.env)
+      .filter(name => /sql|data|db|url/i.test(name))
+      .sort(),
+    envCount: Object.keys(process.env).length,
+    /**
      * Which database-ish variables the host actually set — names only, never values.
      * Hosts disagree on the name, and "no database" with an empty list means the variable
      * is missing, while a non-empty list means it is present under a name we do not read.

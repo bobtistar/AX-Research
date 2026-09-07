@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import {
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
   Database,
@@ -28,6 +29,13 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type QueryDraft = { id: string; text: string };
+
+/**
+ * Candidates shown per page. A search returns up to a few hundred rows and the seed target
+ * is 5–10, so the whole list in one column made choosing a scroll problem rather than a
+ * reading one.
+ */
+const CANDIDATES_PER_PAGE = 10;
 
 const GUEST_KEY_STORAGE = "research-collector-guest-key";
 
@@ -137,6 +145,7 @@ export default function Home() {
   const [includePreprints, setIncludePreprints] = useState(true);
   /** Candidate whose digest panel is open. One at a time: a digest costs a model call. */
   const [digestFor, setDigestFor] = useState<string | null>(null);
+  const [candidatePage, setCandidatePage] = useState(0);
 
   useEffect(() => {
     if (!selectedRunId && runs[0]) setSelectedRunId(runs[0].id);
@@ -153,6 +162,10 @@ export default function Home() {
             .map(candidate => candidate.id)
         )
       );
+      // A re-search replaces the candidate set entirely, so staying on page 4 would show
+      // rows from a result the user never asked about.
+      setCandidatePage(0);
+      setDigestFor(null);
     }
   }, [run?.id, run?.updatedAt]);
 
@@ -244,6 +257,55 @@ export default function Home() {
   const canLock =
     run?.status === "CANDIDATES_READY" &&
     selectedCount === run.desiredSeedCount;
+
+  const allCandidates = run?.candidates ?? [];
+  const pageCount = Math.max(
+    1,
+    Math.ceil(allCandidates.length / CANDIDATES_PER_PAGE)
+  );
+  // Clamped rather than trusted: a new search can return fewer candidates than the page
+  // the user was on, and reading past the end would render an empty table with no
+  // explanation. Derived during render so it is never one frame out of date.
+  const safePage = Math.min(candidatePage, pageCount - 1);
+  const pageStart = safePage * CANDIDATES_PER_PAGE;
+  const pagedCandidates = allCandidates.slice(
+    pageStart,
+    pageStart + CANDIDATES_PER_PAGE
+  );
+  // Selection lives in a Set keyed by candidate id, not in the rendered rows, so seeds
+  // picked on one page survive paging away and back. This counter exists to say so on
+  // screen: the target is 5–10 across the whole result set, and a user who cannot see
+  // their earlier picks has no way to tell whether the count is right.
+  const selectedOnPage = pagedCandidates.filter(candidate =>
+    selectedSeeds.has(candidate.id)
+  ).length;
+
+  const goToPage = (next: number) => {
+    setCandidatePage(Math.max(0, Math.min(next, pageCount - 1)));
+    // The open digest belongs to a row on the page being left; keeping it would leave a
+    // panel on screen describing a paper no longer in the table.
+    setDigestFor(null);
+  };
+
+  useEffect(() => {
+    if (allCandidates.length <= CANDIDATES_PER_PAGE) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      // Never take the arrow keys away from a field the user is typing or selecting in —
+      // the query editor on this same screen is full of them.
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [contenteditable='true']")
+      )
+        return;
+      event.preventDefault();
+      goToPage(safePage + (event.key === "ArrowLeft" ? -1 : 1));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [allCandidates.length, safePage, pageCount]);
   const runMetrics = run ?? {
     totalRetrieved: 0,
     candidateCount: 0,
@@ -793,7 +855,7 @@ export default function Home() {
                             </tr>
                           </thead>
                           <tbody>
-                            {run.candidates.map(candidate => (
+                            {pagedCandidates.map(candidate => (
                               <tr
                                 key={candidate.id}
                                 className="border-b border-zinc-800 align-top hover:bg-zinc-900/70"
@@ -893,7 +955,7 @@ export default function Home() {
                                 </td>
                               </tr>
                             ))}
-                            {run.candidates.map(candidate =>
+                            {pagedCandidates.map(candidate =>
                               digestFor === candidate.id && digest.data ? (
                                 <tr key={`${candidate.id}-digest`}>
                                   <td colSpan={5} className="pb-6">
@@ -908,6 +970,46 @@ export default function Home() {
                           </tbody>
                         </table>
                       </div>
+                      {allCandidates.length > CANDIDATES_PER_PAGE && (
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800 pt-4">
+                          <p className="meta-face text-[9px] text-zinc-500">
+                            {pageStart + 1}–
+                            {pageStart + pagedCandidates.length} /{" "}
+                            {allCandidates.length}
+                            {selectedOnPage > 0 && (
+                              <span className="ml-2 text-zinc-400">
+                                이 페이지에서 {selectedOnPage}개 선택
+                              </span>
+                            )}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              aria-label="이전 후보 페이지"
+                              disabled={safePage === 0}
+                              onClick={() => goToPage(safePage - 1)}
+                              className="grid h-8 w-8 place-items-center border border-zinc-600 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </button>
+                            <p
+                              aria-live="polite"
+                              className="meta-face min-w-[54px] text-center text-[10px] text-zinc-300"
+                            >
+                              {safePage + 1} / {pageCount}
+                            </p>
+                            <button
+                              type="button"
+                              aria-label="다음 후보 페이지"
+                              disabled={safePage >= pageCount - 1}
+                              onClick={() => goToPage(safePage + 1)}
+                              className="grid h-8 w-8 place-items-center border border-zinc-600 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {run.candidates.length === 0 ? (
                         <div className="mt-6 border border-dashed border-zinc-700 p-6 text-center">
                           <CircleAlert className="mx-auto h-5 w-5 text-zinc-500" />

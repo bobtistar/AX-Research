@@ -9,7 +9,12 @@ import {
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { validateSeedSelectionCount, type CandidateDraft } from "./seedService";
+import {
+  rankCandidates,
+  validateSeedSelectionCount,
+  type CandidateDraft,
+} from "./seedService";
+import { extractArxivId } from "./arxivService";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -168,15 +173,24 @@ export async function getResearchRun(owner: RunOwner, runId: string) {
   const candidates = await db
     .select()
     .from(paperCandidates)
-    .where(eq(paperCandidates.runId, runId))
-    .orderBy(desc(paperCandidates.citedByCount));
+    .where(eq(paperCandidates.runId, runId));
   return {
     ...run,
     queries,
-    candidates: candidates.map(candidate => ({
-      ...candidate,
-      provenance: JSON.parse(candidate.provenance) as string[],
-    })),
+    // Ranked here, not ordered in SQL. This read used to `ORDER BY citedByCount DESC`,
+    // which silently undid the ranking the search had applied and put the list back in
+    // age order — citations accumulate with time, so the oldest paper always won.
+    // Re-ranking on read keeps the stored rows order-free and the two paths in agreement.
+    candidates: rankCandidates(
+      candidates.map(candidate => ({
+        ...candidate,
+        provenance: JSON.parse(candidate.provenance) as string[],
+        // Computed, not stored: it is derivable from the DOI and a column would be one
+        // more thing to keep true. Lets the client offer "빠른 이해" without re-deriving
+        // the identifier itself.
+        arxivId: extractArxivId(candidate),
+      }))
+    ),
   };
 }
 

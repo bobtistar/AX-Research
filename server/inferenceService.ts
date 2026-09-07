@@ -6,7 +6,13 @@ import {
 } from "../drizzle/schema";
 import { INFERABLE_SECTIONS, type InferableSection } from "@shared/sections";
 import { ENV } from "./_core/env";
-import { invokeLLM, listLLMModels } from "./_core/llm";
+import {
+  defaultModelFor,
+  invokeLLM,
+  listLLMModels,
+  resolveProvider,
+  type Provider,
+} from "./_core/llm";
 import { assertNotesInWorkspace, getOrCreateWorkspace } from "./noteDb";
 import { authorizeInference, recordInferenceUsage } from "./usage";
 import {
@@ -28,11 +34,16 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 export { INFERENCE_PROMPT_VERSION };
 
 /**
- * Pinned default; override with INFERENCE_MODEL. Verified against the catalog before use,
- * because the gateway may expose the model under a different ID than the vendor docs.
- * gpt-5.6-luna supports structured outputs, which the strict json_schema call below needs.
+ * Kept as a re-export so callers that imported a single default still resolve. The real
+ * default now depends on which provider answers, because a Gemini model ID is not callable
+ * on Muse Spark and the reverse; `defaultModelFor` owns that choice.
+ *
+ * The value this replaced was "gpt-5.6-luna", left over from the Forge gateway. Nothing
+ * had noticed because INFERENCE_MODEL was always set in the environments that ran — but
+ * production currently reports `inferenceModel: null`, so an unset variable would have
+ * asked Gemini for a model it has never heard of.
  */
-export const DEFAULT_INFERENCE_MODEL = "gpt-5.6-luna";
+export { DEFAULT_MODEL_BY_PROVIDER } from "./_core/llm";
 
 /**
  * Kept as an alias of the shared vocabulary so existing callers and stored labels keep
@@ -162,39 +173,50 @@ function contentOf(response: Awaited<ReturnType<typeof invokeLLM>>): string {
   return "{}";
 }
 
-let verifiedModel: string | undefined;
+/** Cached per provider: the two catalogs are disjoint, so one slot would be wrong. */
+const verifiedModelByProvider = new Map<Provider, string>();
 
 /**
  * The model is pinned by configuration, not picked from catalog order. A run records the
  * model alongside promptVersion, so letting the catalog choose made past runs impossible to
- * reproduce. The ID is verified against the catalog once and then cached; a catalog outage
- * does not block inference, but an ID the catalog does not know fails loudly.
+ * reproduce. The ID is verified against the catalog once per provider and then cached; a
+ * catalog outage does not block inference, but an ID the catalog does not know fails loudly.
+ *
+ * `apiKey` selects the provider, exactly as it does in `invokeLLM`: a BYOK call is a Gemini
+ * call, so it must be checked against the Gemini catalog and not the operator's.
  */
-export async function resolveInferenceModel(): Promise<string> {
-  if (verifiedModel) return verifiedModel;
-  const configured = ENV.inferenceModel || DEFAULT_INFERENCE_MODEL;
+export async function resolveInferenceModel(apiKey?: string): Promise<string> {
+  const provider = resolveProvider(apiKey);
+  const cached = verifiedModelByProvider.get(provider);
+  if (cached) return cached;
+
+  const configured = defaultModelFor(provider);
+  const variable = provider === "gemini" ? "GEMINI_MODEL" : "INFERENCE_MODEL";
   try {
-    const catalog = await listLLMModels();
+    const catalog = await listLLMModels(apiKey);
     const known = catalog.data.some(model => model.id === configured);
     if (!known) {
       throw new Error(
-        `INFERENCE_MODEL="${configured}"을 모델 카탈로그에서 찾을 수 없습니다. 사용 가능한 ID: ${catalog.data.map(model => model.id).join(", ")}`
+        `${variable}="${configured}"을 모델 카탈로그에서 찾을 수 없습니다. 사용 가능한 ID: ${catalog.data.map(model => model.id).join(", ")}`
       );
     }
   } catch (error) {
     // Distinguish "the catalog says this model does not exist" from "the catalog is down".
-    if (error instanceof Error && error.message.startsWith("INFERENCE_MODEL="))
+    if (error instanceof Error && error.message.startsWith(`${variable}=`))
       throw error;
     console.warn(
       "[Inference] 모델 카탈로그를 확인하지 못해 설정값을 그대로 사용합니다.",
       {
+        provider,
         model: configured,
         error: error instanceof Error ? error.message : "unknown",
       }
     );
   }
-  verifiedModel = configured;
-  return verifiedModel;
+  // Only the operator's catalog is worth caching across users; a BYOK verification belongs
+  // to one user's key, and caching it would let one user's catalog answer for another.
+  if (provider !== "gemini") verifiedModelByProvider.set(provider, configured);
+  return configured;
 }
 
 export function validateInferenceClaims(
@@ -274,7 +296,9 @@ export async function runEvidenceInference(
   const grant = await authorizeInference(userId);
 
   const runId = nanoid(16);
-  const model = await resolveInferenceModel();
+  // The grant decides the provider — a user key routes to Gemini, no key to Muse Spark —
+  // so the model must be resolved against that same provider's catalog.
+  const model = await resolveInferenceModel(grant.apiKey);
   await db.insert(researchInferenceRuns).values({
     id: runId,
     workspaceId: workspace.id,

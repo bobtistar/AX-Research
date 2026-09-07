@@ -36,9 +36,31 @@ export const ENV = {
   /** The first account to sign in with this email becomes admin. */
   ownerEmail: (process.env.OWNER_EMAIL ?? "").trim().toLowerCase(),
 
-  /** Fallback Gemini key, used when a user has not supplied their own. */
+  /**
+   * Operator key for Muse Spark (Meta's OpenAI-compatible API). Every call that does not
+   * arrive with a user's own key runs on this one and is billed to the operator.
+   */
+  museSparkApiKey: process.env.MUSE_SPARK_API_KEY ?? "",
+  /**
+   * Configurable because Muse Spark is served by several gateways on the same wire format
+   * (Meta directly, llm-stats, aimlapi, EmpirioLabs). Moving between them must not be a
+   * code change. No trailing slash — the paths appended to it start with one.
+   */
+  museSparkBaseUrl: (
+    process.env.MUSE_SPARK_BASE_URL || "https://api.meta.ai/v1"
+  ).replace(/\/+$/, ""),
+  /**
+   * Gemini key used only when a user has registered one of their own (BYOK). It is no
+   * longer the operator's default path, so an empty value is normal.
+   */
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  /**
+   * The operator model, on Muse Spark. Pinned on purpose: a run records its model next to
+   * promptVersion, so letting the catalog pick made past runs irreproducible.
+   */
   inferenceModel: process.env.INFERENCE_MODEL?.trim() ?? "",
+  /** The model a BYOK call uses on Gemini. */
+  geminiModel: process.env.GEMINI_MODEL?.trim() ?? "",
 
   r2AccountId: process.env.R2_ACCOUNT_ID ?? "",
   r2AccessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",

@@ -31,11 +31,16 @@ import {
 import { listInferenceReviews, submitInferenceReview } from "./inferenceReview";
 import { clearUserApiKey, getUserSettings, saveUserApiKey } from "./usage";
 import {
+  PREPRINT_VENUE,
+  rankCandidates,
+  resolveVenueSourceIds,
   searchOpenAlex,
   toCandidateDraft,
   TOP_TIER_VENUES,
 } from "./seedService";
 import { exportSeedNotes } from "./seedExport";
+import { fetchArxivRecords } from "./arxivService";
+import { runPaperDigest } from "./paperDigest";
 import { enforceSearchCooldown, requestAddress } from "./rateLimit";
 
 const topicInput = z
@@ -90,9 +95,84 @@ export const appRouter = router({
     ),
   }),
   seed: router({
-    venues: publicProcedure.query(() =>
-      TOP_TIER_VENUES.map(({ code, label }) => ({ code, label }))
-    ),
+    venues: publicProcedure.query(() => [
+      ...TOP_TIER_VENUES.map(({ code, label }) => ({ code, label })),
+      { code: PREPRINT_VENUE.code, label: PREPRINT_VENUE.label },
+    ]),
+    /**
+     * Which allowlist venues OpenAlex actually resolved.
+     *
+     * The allowlist used to shrink in silence: NeurIPS and AAAI both failed to resolve and
+     * the search still reported success, so the corpus was missing its two largest venues
+     * with nothing on screen to say so. Same reasoning as `system.config` — report what
+     * reached the running process instead of letting it surface as thin results later.
+     */
+    /**
+     * "논문 빠른 이해" — a quote-verified reading scaffold for one candidate.
+     *
+     * Protected because it spends a model call against the user's quota, and because a
+     * public endpoint that fetches an arbitrary arXiv id on request is an open proxy.
+     *
+     * The result is returned, never stored as a note: a digest is a machine draft and
+     * writing it into a section would make it paper evidence. See server/paperDigest.ts.
+     */
+    digest: protectedProcedure
+      .input(
+        z.object({
+          // Accepted rather than an arbitrary URL so the endpoint cannot be pointed at
+          // hosts of the caller's choosing.
+          arxivId: z
+            .string()
+            .trim()
+            .max(40)
+            .regex(
+              /^(\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?\/\d{7})$/,
+              "arXiv ID 형식이 아닙니다."
+            ),
+          venue: z.string().trim().max(256).default("arXiv (preprint)"),
+          year: z.number().int().min(1900).max(2100).nullable().default(null),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const records = await fetchArxivRecords([input.arxivId]);
+        const record = records.get(input.arxivId);
+        if (!record)
+          throw new Error(
+            "arXiv에서 이 논문을 찾지 못했습니다. ID를 확인해 주세요."
+          );
+        return runPaperDigest(ctx.user.id, {
+          title: record.title,
+          abstract: record.abstract,
+          venue: input.venue,
+          year: input.year,
+          // The revision, not just the id: authors revise preprints, and a digest made
+          // from v1 does not describe v3.
+          sourceRef: `arxiv:${record.arxivId}@${record.updated ?? "unknown"}`,
+        });
+      }),
+    venueHealth: publicProcedure.query(async () => {
+      try {
+        const resolution = await resolveVenueSourceIds();
+        return {
+          ok: resolution.unresolved.length === 0,
+          resolved: resolution.resolved,
+          unresolved: resolution.unresolved,
+          sourceCount: resolution.sourceIds.length,
+          error: null as string | null,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          resolved: [],
+          unresolved: [
+            ...TOP_TIER_VENUES.map(venue => venue.code),
+            PREPRINT_VENUE.code,
+          ],
+          sourceCount: 0,
+          error: error instanceof Error ? error.message : "unknown",
+        };
+      }
+    }),
     listRuns: publicProcedure
       .input(z.object({ guestKey: guestKeyInput }))
       .query(({ ctx, input }) =>
@@ -146,7 +226,22 @@ export const appRouter = router({
         );
       }),
     searchCandidates: publicProcedure
-      .input(z.object({ guestKey: guestKeyInput, runId: runIdInput }))
+      .input(
+        z.object({
+          guestKey: guestKeyInput,
+          runId: runIdInput,
+          /**
+           * How to order candidates. Defaults to the fused ranking rather than raw
+           * citation count, which ordered by age; see `rankCandidates`.
+           */
+          ranking: z
+            .enum(["balanced", "impact", "recent"] as const)
+            .default("balanced"),
+          /** Earliest year for the preprint tier. Omit to use the default window. */
+          fromYear: z.number().int().min(1900).max(2100).optional(),
+          includePreprints: z.boolean().default(true),
+        })
+      )
       .mutation(async ({ ctx, input }) => {
         // Unauthenticated and fans out to five OpenAlex calls, so gate it before any work.
         enforceSearchCooldown(input.guestKey, requestAddress(ctx.req));
@@ -170,7 +265,10 @@ export const appRouter = router({
         let failureCount = 0;
         for (const query of run.queries) {
           try {
-            const works = await searchOpenAlex(query.text);
+            const works = await searchOpenAlex(query.text, {
+              fromYear: input.fromYear,
+              includePreprints: input.includePreprints,
+            });
             totalRetrieved += works.length;
             for (const work of works) {
               const draft = toCandidateDraft(work);
@@ -197,9 +295,14 @@ export const appRouter = router({
             failureCount += 1;
           }
         }
-        const drafts = Array.from(byPaper.values())
-          .filter((draft): draft is NonNullable<typeof draft> => Boolean(draft))
-          .sort((a, b) => b.citedByCount - a.citedByCount);
+        // Ranked, not sorted by citation count: raw citations order by age, so no paper
+        // newer than a few years could ever surface. See `rankCandidates`.
+        const drafts = rankCandidates(
+          Array.from(byPaper.values()).filter(
+            (draft): draft is NonNullable<typeof draft> => Boolean(draft)
+          ),
+          input.ranking
+        );
         return persistSearchResults(
           runOwner(ctx, input.guestKey),
           input.runId,

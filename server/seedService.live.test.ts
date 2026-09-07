@@ -51,5 +51,12 @@ describe.runIf(runLive)("OpenAlex live seed sample", () => {
         .slice(0, 2)
         .every(candidate => Boolean(candidate.sourceUrl && candidate.venueCode))
     ).toBe(true);
-  }, 30_000);
+    // Every candidate now carries a venue tier, and recent work must actually appear:
+    // the retrieval this replaces could not return anything published after 2021.
+    expect(
+      candidates.some(candidate => (candidate.year ?? 0) >= 2022)
+    ).toBe(true);
+    // Two requests per query since the preprint tier was added, so five queries is ten
+    // round trips to OpenAlex.
+  }, 90_000);
 });

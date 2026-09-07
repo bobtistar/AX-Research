@@ -3,6 +3,7 @@ import { publicProcedure, router } from "./trpc";
 import { ENV } from "./env";
 import { getDb } from "../db";
 import { migrationStatus } from "./migrate";
+import { DEFAULT_MODEL_BY_PROVIDER } from "./llm";
 
 export const systemRouter = router({
   health: publicProcedure
@@ -66,8 +67,18 @@ export const systemRouter = router({
     googleLogin: Boolean(ENV.googleClientId && ENV.googleClientSecret),
     appUrl: Boolean(ENV.appUrl),
     sessionSecret: Boolean(ENV.cookieSecret),
+    /**
+     * The operator path. Without this key nothing runs except for users who registered a
+     * Gemini key of their own, which is a state worth seeing at a glance rather than
+     * discovering as a failed inference.
+     */
+    museSparkKey: Boolean(ENV.museSparkApiKey),
+    museSparkBaseUrl: ENV.museSparkBaseUrl,
+    inferenceModel:
+      ENV.inferenceModel || DEFAULT_MODEL_BY_PROVIDER.musespark,
+    /** BYOK fallback only. Empty is normal now that Muse Spark carries operator traffic. */
     geminiKey: Boolean(ENV.geminiApiKey),
-    inferenceModel: ENV.inferenceModel || null,
+    geminiModel: ENV.geminiModel || DEFAULT_MODEL_BY_PROVIDER.gemini,
     storage: Boolean(
       ENV.r2AccountId &&
         ENV.r2AccessKeyId &&

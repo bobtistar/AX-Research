@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
 import NoteLibraryView from "@/components/NoteLibraryView";
+import { PaperDigestPanel } from "@/components/PaperDigestPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -126,6 +127,16 @@ export default function Home() {
   const [desiredSeedCount, setDesiredSeedCount] = useState(8);
   const [draftQueries, setDraftQueries] = useState<QueryDraft[]>([]);
   const [selectedSeeds, setSelectedSeeds] = useState<Set<string>>(new Set());
+  /**
+   * Candidate ordering. "balanced" fuses impact with recency; the server used to sort by
+   * raw citation count, which ordered by age and hid everything published recently.
+   */
+  const [ranking, setRanking] = useState<"balanced" | "recent" | "impact">(
+    "balanced"
+  );
+  const [includePreprints, setIncludePreprints] = useState(true);
+  /** Candidate whose digest panel is open. One at a time: a digest costs a model call. */
+  const [digestFor, setDigestFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedRunId && runs[0]) setSelectedRunId(runs[0].id);
@@ -174,6 +185,12 @@ export default function Home() {
       toast.success("top-tier 후보 검색을 마쳤습니다.");
     },
     onError: error => toast.error(error.message),
+  });
+  const digest = trpc.seed.digest.useMutation({
+    onError: error => {
+      setDigestFor(null);
+      toast.error(error.message);
+    },
   });
   const exportSeedNotes = async () => {
     if (!run) return;
@@ -686,21 +703,65 @@ export default function Home() {
                       </Button>
                       {run.status !== "DRAFT" &&
                         run.status !== "SEEDS_LOCKED" && (
-                          <Button
-                            disabled={searchCandidates.isPending}
-                            onClick={() =>
-                              searchCandidates.mutate({
-                                guestKey,
-                                runId: run.id,
-                              })
-                            }
-                            className="h-9 rounded-none bg-zinc-600 text-xs font-black text-white hover:bg-zinc-500"
-                          >
-                            <Search className="mr-1.5 h-3.5 w-3.5" />
-                            {searchCandidates.isPending
-                              ? "OpenAlex 검색 중"
-                              : "top-tier 후보 검색"}
-                          </Button>
+                          <>
+                            <div className="flex items-center gap-px border border-zinc-600">
+                              {(
+                                [
+                                  ["balanced", "균형"],
+                                  ["recent", "최신순"],
+                                  ["impact", "영향력순"],
+                                ] as const
+                              ).map(([mode, label]) => (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  aria-pressed={ranking === mode}
+                                  disabled={searchCandidates.isPending}
+                                  onClick={() => setRanking(mode)}
+                                  className={cn(
+                                    "meta-face h-9 px-2.5 text-[9px] transition-colors",
+                                    ranking === mode
+                                      ? "bg-zinc-100 text-zinc-950"
+                                      : "bg-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                                  )}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              aria-pressed={includePreprints}
+                              disabled={searchCandidates.isPending}
+                              onClick={() => setIncludePreprints(prev => !prev)}
+                              title="OpenAlex는 2022년 이후 학회 proceedings를 채우지 않습니다. 끄면 최근 논문이 거의 나오지 않습니다."
+                              className={cn(
+                                "meta-face h-9 border px-2.5 text-[9px] transition-colors",
+                                includePreprints
+                                  ? "border-zinc-500 bg-zinc-800 text-zinc-100"
+                                  : "border-zinc-700 bg-transparent text-zinc-500 hover:text-zinc-300"
+                              )}
+                            >
+                              preprint {includePreprints ? "포함" : "제외"}
+                            </button>
+                            <Button
+                              disabled={searchCandidates.isPending}
+                              onClick={() =>
+                                searchCandidates.mutate({
+                                  guestKey,
+                                  runId: run.id,
+                                  ranking,
+                                  includePreprints,
+                                })
+                              }
+                              className="h-9 rounded-none bg-zinc-600 text-xs font-black text-white hover:bg-zinc-500"
+                            >
+                              <Search className="mr-1.5 h-3.5 w-3.5" />
+                              {searchCandidates.isPending
+                                ? "OpenAlex 검색 중"
+                                : "top-tier 후보 검색"}
+                            </Button>
+                          </>
                         )}
                     </div>
                   </section>
@@ -727,7 +788,7 @@ export default function Home() {
                               <th className="w-10 py-3">USE</th>
                               <th className="py-3">PAPER / DOI</th>
                               <th className="py-3">VENUE</th>
-                              <th className="py-3">YEAR</th>
+                              <th className="py-3">YEAR / CITED</th>
                               <th className="py-3">PROVENANCE</th>
                             </tr>
                           </thead>
@@ -770,8 +831,22 @@ export default function Home() {
                                   </p>
                                 </td>
                                 <td className="py-4 pr-4">
-                                  <Badge className="rounded-none bg-zinc-700 text-[10px] text-zinc-100 hover:bg-zinc-700">
-                                    {candidate.venueCode}
+                                  <Badge
+                                    title={
+                                      candidate.venueCode === "PREPRINT"
+                                        ? "아직 allowlist 학회에 게재 확인이 안 된 preprint입니다. 동료평가를 거쳤다고 볼 수 없습니다."
+                                        : undefined
+                                    }
+                                    className={cn(
+                                      "rounded-none text-[10px]",
+                                      candidate.venueCode === "PREPRINT"
+                                        ? "bg-amber-900/70 text-amber-100 hover:bg-amber-900/70"
+                                        : "bg-zinc-700 text-zinc-100 hover:bg-zinc-700"
+                                    )}
+                                  >
+                                    {candidate.venueCode === "PREPRINT"
+                                      ? "PREPRINT · 미게재"
+                                      : candidate.venueCode}
                                   </Badge>
                                   <p className="mt-1 max-w-[150px] leading-4 text-zinc-500">
                                     {candidate.venue}
@@ -779,6 +854,9 @@ export default function Home() {
                                 </td>
                                 <td className="py-4 text-zinc-300">
                                   {candidate.year ?? "—"}
+                                  <p className="mt-1 font-mono text-[9px] text-zinc-500">
+                                    {candidate.citedByCount.toLocaleString()} 회
+                                  </p>
                                 </td>
                                 <td className="py-4 pr-2">
                                   <div className="space-y-1">
@@ -792,9 +870,41 @@ export default function Home() {
                                       </p>
                                     ))}
                                   </div>
+                                  {candidate.arxivId && (
+                                    <button
+                                      type="button"
+                                      disabled={digest.isPending}
+                                      onClick={() => {
+                                        setDigestFor(candidate.id);
+                                        digest.mutate({
+                                          arxivId: candidate.arxivId!,
+                                          venue: candidate.venue,
+                                          year: candidate.year,
+                                        });
+                                      }}
+                                      className="meta-face mt-2 border border-zinc-600 px-2 py-1 text-[9px] text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-50"
+                                    >
+                                      {digest.isPending &&
+                                      digestFor === candidate.id
+                                        ? "읽는 중"
+                                        : "빠른 이해"}
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             ))}
+                            {run.candidates.map(candidate =>
+                              digestFor === candidate.id && digest.data ? (
+                                <tr key={`${candidate.id}-digest`}>
+                                  <td colSpan={5} className="pb-6">
+                                    <PaperDigestPanel
+                                      digest={digest.data}
+                                      onClose={() => setDigestFor(null)}
+                                    />
+                                  </td>
+                                </tr>
+                              ) : null
+                            )}
                           </tbody>
                         </table>
                       </div>

@@ -38,21 +38,6 @@ export const systemRouter = router({
     database: Boolean(await getDb()),
     /** Why the schema is or is not in place — the usual reason a database looks absent. */
     migration: migrationStatus(),
-    /**
-     * Every environment variable name that could plausibly be a database setting, so a
-     * typo, a variable saved on the wrong service, or one that never saved at all can be
-     * told apart without guessing. Names only — values are never read here. `envCount`
-     * shows whether the process received any configuration at all.
-     */
-    envNames: Object.keys(process.env)
-      .filter(name => /sql|data|db|url/i.test(name))
-      .sort(),
-    envCount: Object.keys(process.env).length,
-    /**
-     * Which database-ish variables the host actually set — names only, never values.
-     * Hosts disagree on the name, and "no database" with an empty list means the variable
-     * is missing, while a non-empty list means it is present under a name we do not read.
-     */
     /** Variables that exist but hold an empty value — an unresolved host reference. */
     databaseVarsEmpty: ["DATABASE_URL", "MYSQL_URL", "MYSQL_PUBLIC_URL"].filter(
       name => name in process.env && !process.env[name]
@@ -74,8 +59,7 @@ export const systemRouter = router({
      */
     museSparkKey: Boolean(ENV.museSparkApiKey),
     museSparkBaseUrl: ENV.museSparkBaseUrl,
-    inferenceModel:
-      ENV.inferenceModel || DEFAULT_MODEL_BY_PROVIDER.musespark,
+    inferenceModel: ENV.inferenceModel || DEFAULT_MODEL_BY_PROVIDER.musespark,
     /** BYOK fallback only. Empty is normal now that Muse Spark carries operator traffic. */
     geminiKey: Boolean(ENV.geminiApiKey),
     geminiModel: ENV.geminiModel || DEFAULT_MODEL_BY_PROVIDER.gemini,

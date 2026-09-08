@@ -43,6 +43,19 @@ describe("arXiv HTML splitting", () => {
   });
 });
 
+describe("an unconvertible paper", () => {
+  it("yields no sections from an abstract landing page", () => {
+    // A converter that lacks a paper answers with the arXiv abstract page and HTTP 200.
+    // Nothing about the response says so; the absence of sections is the only signal, which
+    // is what makes the caller's zero-section check load-bearing rather than defensive.
+    const landingPage = `
+      <h1 class="title mathjax">Optimization of DNN-based speaker verification</h1>
+      <h3 class="browse-context-heading">Browse context</h3>
+      <blockquote class="abstract">Some abstract text.</blockquote>`;
+    expect(splitArxivHtml(landingPage)).toEqual([]);
+  });
+});
+
 describe("section selection", () => {
   it("drops a subsection because its parent is excluded", () => {
     // The defect this guards: excluding by heading alone let "2.1 Benchmarks" through,

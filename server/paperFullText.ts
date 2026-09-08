@@ -16,7 +16,22 @@
  * Older papers have no HTML, so callers fall back to the abstract.
  */
 
-const HTML_BASE = "https://arxiv.org/html";
+/**
+ * Where to look for a paper's HTML, in order.
+ *
+ * arXiv renders HTML natively only for submissions since late 2023. ar5iv converts much of
+ * the older archive, and emits the same LaTeX-derived markup, so the same parser reads
+ * both. What it does not convert it answers with a redirect to the abstract landing page —
+ * HTTP 200 with no sections in it — which is why a successful response is not enough on
+ * its own and the zero-section check below is load-bearing.
+ */
+const HTML_SOURCES = [
+  { label: "arxiv", url: (id: string) => `https://arxiv.org/html/${id}` },
+  {
+    label: "ar5iv",
+    url: (id: string) => `https://ar5iv.labs.arxiv.org/html/${id}`,
+  },
+] as const;
 
 export type PaperSection = {
   /** Heading as printed, e.g. "4.1 Experimental Setup". */
@@ -207,40 +222,47 @@ export async function fetchArxivFullText(
   arxivId: string,
   budget = 60_000
 ): Promise<FullTextResult> {
-  let html: string;
-  try {
-    const response = await fetch(
-      `${HTML_BASE}/${encodeURIComponent(arxivId)}`,
-      {
+  const id = encodeURIComponent(arxivId);
+  const failures: string[] = [];
+
+  for (const source of HTML_SOURCES) {
+    let html: string;
+    try {
+      const response = await fetch(source.url(id), {
         headers: { accept: "text/html" },
         redirect: "follow",
+      });
+      if (!response.ok) {
+        failures.push(`${source.label} HTTP ${response.status}`);
+        continue;
       }
-    );
-    if (!response.ok)
-      return {
-        kind: "unavailable",
-        reason:
-          response.status === 404
-            ? "arXiv에 HTML 전문이 없는 논문입니다 (2023년 말 이전 제출)."
-            : `arXiv HTML 조회 실패 (HTTP ${response.status})`,
-      };
-    html = await response.text();
-  } catch (error) {
+      html = await response.text();
+    } catch (error) {
+      failures.push(
+        `${source.label} ${error instanceof Error ? error.message : "연결 실패"}`
+      );
+      continue;
+    }
+
+    const sections = splitArxivHtml(html);
+    if (sections.length === 0) {
+      // Either genuinely unparseable, or the abstract landing page a converter returns for
+      // a paper it does not have. Both mean: no full text here, try the next source.
+      failures.push(`${source.label} 변환본 없음`);
+      continue;
+    }
+
+    const selected = selectRelevantSections(sections, budget);
     return {
-      kind: "unavailable",
-      reason: error instanceof Error ? error.message : "arXiv 연결 실패",
+      kind: "arxiv_html",
+      text: renderSections(selected.sections),
+      sections: selected.sections,
+      omitted: selected.omitted,
     };
   }
 
-  const sections = splitArxivHtml(html);
-  if (sections.length === 0)
-    return { kind: "unavailable", reason: "HTML에서 섹션을 찾지 못했습니다." };
-
-  const selected = selectRelevantSections(sections, budget);
   return {
-    kind: "arxiv_html",
-    text: renderSections(selected.sections),
-    sections: selected.sections,
-    omitted: selected.omitted,
+    kind: "unavailable",
+    reason: `원문 HTML을 찾지 못했습니다 (${failures.join(", ")}). 초록만 사용합니다.`,
   };
 }

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { INFERABLE_SECTIONS } from "@shared/sections";
 import {
+  MIN_QUOTE_LENGTH,
   buildReadingChecklist,
   locateQuote,
-  MIN_QUOTE_LENGTH,
   normalizeForQuoteMatch,
+  validateAnalystExtraction,
   validateDigestEntries,
 } from "./paperDigest";
 
@@ -135,7 +136,10 @@ describe("digest referee", () => {
 
   it("ignores a duplicate section, taking the first entry only", () => {
     const entries = validateDigestEntries(
-      [entry(), entry({ draft: "두 번째 주장", quote: "sorting, keyword counting" })],
+      [
+        entry(),
+        entry({ draft: "두 번째 주장", quote: "sorting, keyword counting" }),
+      ],
       ABSTRACT
     );
     expect(entries[0].draft).toBe(entry().draft);
@@ -168,5 +172,104 @@ describe("reading checklist", () => {
     expect(buildReadingChecklist(validateDigestEntries(all, ABSTRACT))).toEqual(
       []
     );
+  });
+});
+
+describe("analyst extraction referee", () => {
+  const abstract =
+    "We introduce K-MetBench, a benchmark for expert reasoning in meteorology. " +
+    "We evaluate on KMMLU and report accuracy against GPT-4 and Gemini baselines.";
+
+  it("numbers claims by position and keeps their located quote", () => {
+    const result = validateAnalystExtraction(
+      {
+        claims: [
+          {
+            index: 1,
+            text: "K-MetBench 벤치마크를 제안한다.",
+            quote: "We introduce K-MetBench, a benchmark for expert reasoning",
+          },
+        ],
+      },
+      abstract
+    );
+    expect(result.claims).toHaveLength(1);
+    expect(result.claims[0]).toMatchObject({ index: 1, status: "SUPPORTED" });
+    expect(abstract).toContain(result.claims[0].quote);
+  });
+
+  it("marks a fabricated quote REJECTED rather than dropping or downgrading it", () => {
+    // "The paper does not say" and "the model made this up" are different facts, and a
+    // reader checking the digest needs to see which happened.
+    const result = validateAnalystExtraction(
+      {
+        claims: [
+          {
+            index: 1,
+            text: "지어낸 주장",
+            quote: "We prove convergence under adversarial noise",
+          },
+        ],
+      },
+      abstract
+    );
+    expect(result.claims[0].status).toBe("REJECTED");
+    expect(result.claims[0].quote).toBe("");
+  });
+
+  it("discards a hypothesis pointing at a claim that does not exist", () => {
+    const result = validateAnalystExtraction(
+      {
+        claims: [{ index: 1, text: "주장", quote: "We introduce K-MetBench" }],
+        hypotheses: [{ claimIndex: 7, text: "떠 있는 가설", quote: "" }],
+      },
+      abstract
+    );
+    expect(result.hypotheses).toEqual([]);
+  });
+
+  it("renumbers claims so a repeated index does not orphan its hypothesis", () => {
+    const result = validateAnalystExtraction(
+      {
+        claims: [
+          { index: 3, text: "첫 주장", quote: "We introduce K-MetBench" },
+          { index: 3, text: "둘째 주장", quote: "We evaluate on KMMLU" },
+        ],
+        hypotheses: [{ claimIndex: 3, text: "가설", quote: "" }],
+      },
+      abstract
+    );
+    expect(result.claims.map(claim => claim.index)).toEqual([1, 2]);
+    // The declared index maps to the first claim that used it.
+    expect(result.hypotheses[0].claimIndex).toBe(1);
+  });
+
+  it("fills absent conditions with 명시 안 됨 rather than a blank", () => {
+    // A blank baseline field reads as "no baselines were used", which the source did not
+    // say. The explicit marker keeps the two apart.
+    const result = validateAnalystExtraction(
+      {
+        claims: [{ index: 1, text: "주장", quote: "We introduce K-MetBench" }],
+        verifications: [{ claimIndex: 1, datasets: "KMMLU", quote: "" }],
+      },
+      abstract
+    );
+    expect(result.verifications[0]).toMatchObject({
+      datasets: "KMMLU",
+      metrics: "명시 안 됨",
+      baselines: "명시 안 됨",
+      seeds: "명시 안 됨",
+      scale: "명시 안 됨",
+    });
+  });
+
+  it("returns empty structures rather than throwing on a response with nothing in it", () => {
+    const result = validateAnalystExtraction({}, abstract);
+    expect(result.claims).toEqual([]);
+    expect(result.reproducibility).toMatchObject({
+      codeAvailable: "없음",
+      hyperparameters: "없음",
+      status: "ABSENT",
+    });
   });
 });

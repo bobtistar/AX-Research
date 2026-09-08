@@ -54,6 +54,69 @@ export type DigestEntry = {
   rejectedReason?: "quote_not_in_source" | "quote_too_short" | "empty_draft";
 };
 
+/** What the analyst schema writes when the source names no value. */
+export const ABSENT_TEXT = "없음";
+export const UNSPECIFIED_TEXT = "명시 안 됨";
+
+export type AnalystClaim = {
+  index: number;
+  text: string;
+  quote: string;
+  status: DigestStatus;
+};
+
+export type AnalystHypothesis = {
+  claimIndex: number;
+  text: string;
+  quote: string;
+  status: DigestStatus;
+};
+
+/**
+ * Conditions as values, never prose. Each field is either what the source names or the
+ * explicit `명시 안 됨` — a blank would read as "no baselines", which is a different and
+ * much stronger statement than "the abstract does not list them".
+ */
+export type AnalystVerification = {
+  claimIndex: number;
+  datasets: string;
+  metrics: string;
+  baselines: string;
+  seeds: string;
+  scale: string;
+  result: string;
+  quote: string;
+  status: DigestStatus;
+};
+
+export type AnalystLimitation = {
+  text: string;
+  /** The section the authors said it in, or `없음` when the source names none. */
+  sourceSection: string;
+  quote: string;
+  status: DigestStatus;
+};
+
+export type AnalystReproducibility = {
+  codeAvailable: string;
+  hyperparameters: string;
+  quote: string;
+  status: DigestStatus;
+};
+
+/**
+ * The analyst extraction: numbered claims, each with the hypothesis it sets out to
+ * establish and the experiment that tested it, kept apart on purpose. Merging the two
+ * hides the case where a paper tested something other than what it set out to test.
+ */
+export type AnalystExtraction = {
+  claims: AnalystClaim[];
+  hypotheses: AnalystHypothesis[];
+  verifications: AnalystVerification[];
+  limitations: AnalystLimitation[];
+  reproducibility: AnalystReproducibility;
+};
+
 export type PaperDigest = {
   title: string;
   summary: string;
@@ -64,6 +127,8 @@ export type PaperDigest = {
    * the model's own claim about what it found.
    */
   readingChecklist: InferableSection[];
+  /** Verified the same way as `entries`: nothing here is asserted without a located quote. */
+  analyst: AnalystExtraction;
   /** Always true. A digest is a reading aid, not a note and not evidence. */
   provisional: true;
   sourceKind: "arxiv_abstract";
@@ -156,13 +221,19 @@ export function validateDigestEntries(
 ): DigestEntry[] {
   const bySection = new Map<string, ModelEntry>();
   for (const entry of modelEntries) {
-    if (!bySection.has(entry.sectionType)) bySection.set(entry.sectionType, entry);
+    if (!bySection.has(entry.sectionType))
+      bySection.set(entry.sectionType, entry);
   }
 
   return INFERABLE_SECTIONS.map((sectionType): DigestEntry => {
     const entry = bySection.get(sectionType);
     if (!entry || entry.status !== "SUPPORTED")
-      return { sectionType, draft: entry?.draft?.trim() ?? "", quote: "", status: "ABSENT" };
+      return {
+        sectionType,
+        draft: entry?.draft?.trim() ?? "",
+        quote: "",
+        status: "ABSENT",
+      };
 
     const draft = entry.draft?.trim() ?? "";
     if (!draft)
@@ -195,6 +266,143 @@ export function validateDigestEntries(
 
     return { sectionType, draft, quote: located, status: "SUPPORTED" };
   });
+}
+
+type ModelQuoted = { quote?: unknown; [key: string]: unknown };
+
+/**
+ * Whether an item's quote is actually in the source.
+ *
+ * Same rule the section entries live by: an assertion without a locatable span is not
+ * downgraded to "the paper does not say", it is marked REJECTED. Those are different
+ * facts, and only one of them means the model made something up.
+ */
+function verifyQuote(
+  item: ModelQuoted | undefined,
+  abstract: string
+): { status: DigestStatus; quote: string } {
+  const raw = typeof item?.quote === "string" ? item.quote : "";
+  if (!raw.trim()) return { status: "ABSENT", quote: "" };
+  if (normalizeForQuoteMatch(raw).length < MIN_QUOTE_LENGTH)
+    return { status: "REJECTED", quote: "" };
+  const located = locateQuote(raw, abstract);
+  return located === null
+    ? { status: "REJECTED", quote: "" }
+    : { status: "SUPPORTED", quote: located };
+}
+
+function text(value: unknown, fallback: string): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || fallback;
+}
+
+function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * The analyst referee.
+ *
+ * A claim whose quote does not check out is kept and marked REJECTED rather than dropped:
+ * a reader comparing the digest against the paper needs to see that the model asserted
+ * something it could not support. Hypotheses and verifications hang off a claim index, so
+ * one pointing at a claim that does not exist is discarded — it has nothing to be about.
+ */
+export function validateAnalystExtraction(
+  raw: {
+    claims?: readonly ModelQuoted[];
+    hypotheses?: readonly ModelQuoted[];
+    verifications?: readonly ModelQuoted[];
+    limitations?: readonly ModelQuoted[];
+    reproducibility?: ModelQuoted;
+  },
+  abstract: string
+): AnalystExtraction {
+  const claims: AnalystClaim[] = (raw.claims ?? [])
+    .map((item, order): AnalystClaim => {
+      const { status, quote } = verifyQuote(item, abstract);
+      return {
+        // Renumbered from position: a model that repeats or skips an index would otherwise
+        // orphan every hypothesis pointing at it.
+        index: order + 1,
+        text: text(item.text, ABSENT_TEXT),
+        quote,
+        status,
+      };
+    })
+    .filter(claim => claim.text !== ABSENT_TEXT);
+
+  const claimIndexes = new Set(claims.map(claim => claim.index));
+  const originalIndex = new Map<number, number>();
+  (raw.claims ?? []).forEach((item, order) => {
+    const declared = num(item.index);
+    // First writer wins: when a model repeats a number, a hypothesis citing it means the
+    // claim that used it first, not whichever happened to be emitted last.
+    if (declared !== null && !originalIndex.has(declared))
+      originalIndex.set(declared, order + 1);
+  });
+  const resolveIndex = (value: unknown) => {
+    const declared = num(value);
+    if (declared === null) return null;
+    const mapped = originalIndex.get(declared) ?? declared;
+    return claimIndexes.has(mapped) ? mapped : null;
+  };
+
+  const hypotheses: AnalystHypothesis[] = [];
+  for (const item of raw.hypotheses ?? []) {
+    const claimIndex = resolveIndex(item.claimIndex);
+    if (claimIndex === null) continue;
+    const { status, quote } = verifyQuote(item, abstract);
+    hypotheses.push({
+      claimIndex,
+      text: text(item.text, ABSENT_TEXT),
+      quote,
+      status,
+    });
+  }
+
+  const verifications: AnalystVerification[] = [];
+  for (const item of raw.verifications ?? []) {
+    const claimIndex = resolveIndex(item.claimIndex);
+    if (claimIndex === null) continue;
+    const { status, quote } = verifyQuote(item, abstract);
+    verifications.push({
+      claimIndex,
+      // Conditions default to 명시 안 됨, not to a blank: an empty baseline field reads as
+      // "no baselines were used", which the abstract did not say.
+      datasets: text(item.datasets, UNSPECIFIED_TEXT),
+      metrics: text(item.metrics, UNSPECIFIED_TEXT),
+      baselines: text(item.baselines, UNSPECIFIED_TEXT),
+      seeds: text(item.seeds, UNSPECIFIED_TEXT),
+      scale: text(item.scale, UNSPECIFIED_TEXT),
+      result: text(item.result, ABSENT_TEXT),
+      quote,
+      status,
+    });
+  }
+
+  const limitations: AnalystLimitation[] = (raw.limitations ?? [])
+    .map((item): AnalystLimitation => {
+      const { status, quote } = verifyQuote(item, abstract);
+      return {
+        text: text(item.text, ABSENT_TEXT),
+        sourceSection: text(item.sourceSection, ABSENT_TEXT),
+        quote,
+        status,
+      };
+    })
+    .filter(limitation => limitation.text !== ABSENT_TEXT);
+
+  const repro = raw.reproducibility;
+  const reproVerified = verifyQuote(repro, abstract);
+  const reproducibility: AnalystReproducibility = {
+    codeAvailable: text(repro?.codeAvailable, ABSENT_TEXT),
+    hyperparameters: text(repro?.hyperparameters, ABSENT_TEXT),
+    quote: reproVerified.quote,
+    status: reproVerified.status,
+  };
+
+  return { claims, hypotheses, verifications, limitations, reproducibility };
 }
 
 /**
@@ -239,7 +447,11 @@ export async function runPaperDigest(
   const grant = await authorizeInference(userId);
   const model = await resolveInferenceModel(grant.apiKey);
 
-  let modelResult: { summary?: string; entries?: ModelEntry[] };
+  type ModelResponse = {
+    summary?: string;
+    entries?: ModelEntry[];
+  } & Parameters<typeof validateAnalystExtraction>[0];
+  let modelResult: ModelResponse;
   try {
     const response = await invokeLLM({
       model,
@@ -258,7 +470,7 @@ export async function runPaperDigest(
     // Counted as soon as the call returns, matching inference: a prompt that makes the
     // model fail must not run free against the quota.
     await recordInferenceUsage(userId, grant, model);
-    modelResult = safeJson<{ summary?: string; entries?: ModelEntry[] }>(
+    modelResult = safeJson<ModelResponse>(
       response.choices?.[0]?.message?.content ?? "{}",
       {}
     );
@@ -282,6 +494,7 @@ export async function runPaperDigest(
     summary,
     entries,
     readingChecklist: buildReadingChecklist(entries),
+    analyst: validateAnalystExtraction(modelResult, abstract),
     provisional: true,
     sourceKind: "arxiv_abstract",
     sourceRef: source.sourceRef,

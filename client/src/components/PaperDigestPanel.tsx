@@ -11,10 +11,32 @@ type DigestEntry = {
   rejectedReason?: string;
 };
 
+type Verified = { quote: string; status: "SUPPORTED" | "ABSENT" | "REJECTED" };
+
+export type AnalystExtraction = {
+  claims: (Verified & { index: number; text: string })[];
+  hypotheses: (Verified & { claimIndex: number; text: string })[];
+  verifications: (Verified & {
+    claimIndex: number;
+    datasets: string;
+    metrics: string;
+    baselines: string;
+    seeds: string;
+    scale: string;
+    result: string;
+  })[];
+  limitations: (Verified & { text: string; sourceSection: string })[];
+  reproducibility: Verified & {
+    codeAvailable: string;
+    hyperparameters: string;
+  };
+};
+
 export type PaperDigestResult = {
   title: string;
   summary: string;
   entries: DigestEntry[];
+  analyst: AnalystExtraction;
   readingChecklist: string[];
   provisional: boolean;
   sourceKind: string;
@@ -141,6 +163,97 @@ export function PaperDigestPanel({
           </div>
         ))}
       </div>
+
+      {digest.analyst.claims.length > 0 && (
+        <div className="mt-4 border-t border-zinc-800 pt-4">
+          <p className="meta-face text-[9px] text-zinc-500">
+            주장 · 가설 · 검증
+          </p>
+          <div className="mt-2 space-y-3">
+            {digest.analyst.claims.map(claim => {
+              const hypothesis = digest.analyst.hypotheses.find(
+                item => item.claimIndex === claim.index
+              );
+              const verification = digest.analyst.verifications.find(
+                item => item.claimIndex === claim.index
+              );
+              return (
+                <article
+                  key={claim.index}
+                  className="border border-zinc-800 bg-zinc-900/60 p-3"
+                >
+                  <p className="text-[11px] leading-5 text-zinc-200">
+                    <span className="font-mono text-zinc-500">
+                      {claim.index}.
+                    </span>{" "}
+                    {claim.text}
+                    {claim.status === "REJECTED" && (
+                      <span className="ml-2 border border-amber-900/60 px-1 font-mono text-[9px] text-amber-200">
+                        인용 미검증
+                      </span>
+                    )}
+                  </p>
+                  {claim.quote && (
+                    <blockquote className="mt-1.5 border-l border-zinc-600 pl-2 text-[10px] leading-4 text-zinc-500">
+                      “{claim.quote}”
+                    </blockquote>
+                  )}
+                  {/* Kept apart on purpose: what they set out to show, then what the
+                      experiment returned. Merged, a paper that tested something else
+                      reads as if it confirmed its own hypothesis. */}
+                  <p className="mt-2 text-[10px] leading-4 text-zinc-400">
+                    <span className="text-zinc-600">가설 </span>
+                    {hypothesis?.text ?? "없음"}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-4 text-zinc-400">
+                    <span className="text-zinc-600">검증 </span>
+                    {verification?.result ?? "없음"}
+                  </p>
+                  {verification && (
+                    <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 font-mono text-[9px] text-zinc-600">
+                      {(
+                        [
+                          ["데이터셋", verification.datasets],
+                          ["지표", verification.metrics],
+                          ["베이스라인", verification.baselines],
+                          ["시드·반복", verification.seeds],
+                          ["규모·자원", verification.scale],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div key={label} className="contents">
+                          <dt>{label}</dt>
+                          <dd className="text-zinc-500">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(digest.analyst.limitations.length > 0 ||
+        digest.analyst.reproducibility.codeAvailable !== "없음") && (
+        <div className="mt-4 border-t border-zinc-800 pt-4">
+          <p className="meta-face text-[9px] text-zinc-500">
+            저자가 인정한 한계 · 재현 정보
+          </p>
+          {digest.analyst.limitations.map((limitation, index) => (
+            <p key={index} className="mt-2 text-[10px] leading-4 text-zinc-400">
+              {limitation.text}
+              <span className="ml-1 font-mono text-zinc-600">
+                — {limitation.sourceSection}
+              </span>
+            </p>
+          ))}
+          <p className="mt-2 font-mono text-[9px] text-zinc-600">
+            코드 공개 {digest.analyst.reproducibility.codeAvailable} ·
+            하이퍼파라미터 {digest.analyst.reproducibility.hyperparameters}
+          </p>
+        </div>
+      )}
 
       {digest.readingChecklist.length > 0 && (
         <div className="mt-4 border border-amber-900/60 bg-amber-950/20 p-3">

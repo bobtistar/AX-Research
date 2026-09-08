@@ -33,9 +33,9 @@ type QueryDraft = { id: string; text: string };
 /**
  * Candidates shown per page. A search returns up to a few hundred rows and the seed target
  * is 5–10, so the whole list in one column made choosing a scroll problem rather than a
- * reading one.
+ * reading one. Matched to the target so a full page is a plausible seed set.
  */
-const CANDIDATES_PER_PAGE = 10;
+const CANDIDATES_PER_PAGE = 5;
 
 const GUEST_KEY_STORAGE = "research-collector-guest-key";
 
@@ -970,12 +970,17 @@ export default function Home() {
                           </tbody>
                         </table>
                       </div>
-                      {allCandidates.length > CANDIDATES_PER_PAGE && (
+                      {/*
+                        Shown whenever there is anything to page through, not only past the
+                        first page. With it hidden on a short result set the table gave no
+                        clue whether it was showing everything or a slice of something
+                        larger — the arrows were absent and so was the total.
+                      */}
+                      {allCandidates.length > 0 && (
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800 pt-4">
                           <p className="meta-face text-[9px] text-zinc-500">
-                            {pageStart + 1}–
-                            {pageStart + pagedCandidates.length} /{" "}
-                            {allCandidates.length}
+                            {pageStart + 1}–{pageStart + pagedCandidates.length}{" "}
+                            / {allCandidates.length}
                             {selectedOnPage > 0 && (
                               <span className="ml-2 text-zinc-400">
                                 이 페이지에서 {selectedOnPage}개 선택

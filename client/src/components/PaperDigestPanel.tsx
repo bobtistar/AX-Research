@@ -40,6 +40,8 @@ export type PaperDigestResult = {
   readingChecklist: string[];
   provisional: boolean;
   sourceKind: string;
+  sourceSections: string[];
+  fullTextNote?: string;
   sourceRef: string;
   model: string;
   promptVersion: string;
@@ -254,6 +256,17 @@ export function PaperDigestPanel({
           </p>
         </div>
       )}
+
+      {/*
+        Which text the answers were checked against. An abstract-only digest and one that
+        read the paper's own sections are different objects, and a reader deciding whether
+        to trust "저자가 인정한 한계: 없음" needs to know which they are looking at.
+      */}
+      <p className="mt-3 font-mono text-[9px] leading-4 text-zinc-600">
+        {digest.sourceKind === "arxiv_fulltext"
+          ? `원문 ${digest.sourceSections.length}개 절을 읽음: ${digest.sourceSections.join(" · ")}`
+          : `초록만 읽음${digest.fullTextNote ? ` — ${digest.fullTextNote}` : ""}`}
+      </p>
 
       {digest.readingChecklist.length > 0 && (
         <div className="mt-4 border border-amber-900/60 bg-amber-950/20 p-3">

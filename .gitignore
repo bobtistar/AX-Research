@@ -118,3 +118,7 @@ client/public/__manus__/version.json
 # and over time — opt in deliberately once you have decided the notes may be versioned.
 eval/gold/
 eval/results.tsv
+
+# Reference PDFs kept locally for testing. Papers are large and often not ours to
+# redistribute, so they stay out of the repository.
+ref/

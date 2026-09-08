@@ -148,6 +148,9 @@ export const appRouter = router({
           // The revision, not just the id: authors revise preprints, and a digest made
           // from v1 does not describe v3.
           sourceRef: `arxiv:${record.arxivId}@${record.updated ?? "unknown"}`,
+          // Lets the digest read the paper's own sections. Best-effort: arXiv has no HTML
+          // for older submissions, and the digest falls back to the abstract.
+          arxivId: record.arxivId,
         });
       }),
     venueHealth: publicProcedure.query(async () => {

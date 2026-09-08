@@ -21,6 +21,7 @@
  */
 import { INFERABLE_SECTIONS, type InferableSection } from "@shared/sections";
 import { invokeLLM } from "./_core/llm";
+import { fetchArxivFullText } from "./paperFullText";
 import { authorizeInference, recordInferenceUsage } from "./usage";
 import { resolveInferenceModel } from "./inferenceService";
 import {
@@ -131,7 +132,12 @@ export type PaperDigest = {
   analyst: AnalystExtraction;
   /** Always true. A digest is a reading aid, not a note and not evidence. */
   provisional: true;
-  sourceKind: "arxiv_abstract";
+  /** Which text the quotes were checked against. */
+  sourceKind: "arxiv_abstract" | "arxiv_fulltext";
+  /** Section headings actually read, empty for an abstract-only digest. */
+  sourceSections: string[];
+  /** Why full text was not used, when it was not. */
+  fullTextNote?: string;
   sourceRef: string;
   model: string;
   promptVersion: string;
@@ -435,13 +441,38 @@ function safeJson<T>(value: unknown, fallback: T): T {
  */
 export async function runPaperDigest(
   userId: number,
-  source: DigestSource & { sourceRef: string }
+  source: DigestSource & { sourceRef: string; arxivId?: string }
 ): Promise<PaperDigest> {
-  const abstract = source.abstract.trim();
+  let abstract = source.abstract.trim();
   if (abstract.length < 80)
     throw new Error(
       "초록이 너무 짧아 요약을 만들 수 없습니다. 원문을 직접 확인해 주세요."
     );
+
+  /**
+   * Prefer the paper's own sections over its abstract.
+   *
+   * The analyst schema asks for seeds, baselines and acknowledged limitations, none of
+   * which an abstract carries — it is about 1% of a paper. Selected sections reach them
+   * while staying near the abstract's cost. Full text is best-effort: arXiv renders HTML
+   * only for recent submissions, and an abstract-only digest is a smaller answer, not a
+   * failed one.
+   */
+  let sourceKind: PaperDigest["sourceKind"] = "arxiv_abstract";
+  let sourceSections: string[] = [];
+  let fullTextNote: string | undefined;
+  if (source.arxivId) {
+    const full = await fetchArxivFullText(source.arxivId);
+    if (full.kind === "arxiv_html") {
+      abstract = full.text;
+      sourceKind = "arxiv_fulltext";
+      sourceSections = full.sections.map(section => section.heading);
+      if (full.omitted.length)
+        fullTextNote = `길이 제한으로 제외된 절: ${full.omitted.join(", ")}`;
+    } else {
+      fullTextNote = full.reason;
+    }
+  }
 
   // Authorised before the call, so a refused digest costs nothing, exactly as inference does.
   const grant = await authorizeInference(userId);
@@ -455,7 +486,11 @@ export async function runPaperDigest(
   try {
     const response = await invokeLLM({
       model,
-      messages: buildDigestMessages(source),
+      messages: buildDigestMessages({
+        ...source,
+        abstract,
+        isFullText: sourceKind === "arxiv_fulltext",
+      }),
       apiKey: grant.apiKey,
       maxTokens: MAX_DIGEST_TOKENS,
       responseFormat: {
@@ -496,7 +531,9 @@ export async function runPaperDigest(
     readingChecklist: buildReadingChecklist(entries),
     analyst: validateAnalystExtraction(modelResult, abstract),
     provisional: true,
-    sourceKind: "arxiv_abstract",
+    sourceKind,
+    sourceSections,
+    fullTextNote,
     sourceRef: source.sourceRef,
     model,
     promptVersion: DIGEST_PROMPT_VERSION,

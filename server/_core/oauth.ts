@@ -53,10 +53,14 @@ export function registerOAuthRoutes(app: Express) {
         invalid_client:
           "GOOGLE_CLIENT_ID 또는 GOOGLE_CLIENT_SECRET 이 올바르지 않습니다.",
       };
+      // text/plain, and the provider's own code is never echoed back. Express sends a
+      // string as HTML by default, so interpolating a query parameter into it put a
+      // reflected-XSS path ahead of the state check — reachable by opening a link.
       res
         .status(400)
+        .type("text/plain")
         .send(
-          `로그인을 완료하지 못했습니다 (${error}).\n\n${explanations[error] ?? "Google이 요청을 거부했습니다."}`
+          `로그인을 완료하지 못했습니다.\n\n${explanations[error] ?? "Google이 요청을 거부했습니다. 잠시 후 다시 시도해 주세요."}`
         );
       return;
     }
@@ -112,6 +116,7 @@ export function registerOAuthRoutes(app: Express) {
         caught instanceof Error ? caught.message : "알 수 없는 오류";
       res
         .status(500)
+        .type("text/plain")
         .send(
           `로그인 처리 중 오류가 발생했습니다.\n\n${detail}\n\n설정 상태는 /api/trpc/system.config?input=%7B%7D 에서 확인할 수 있습니다.`
         );

@@ -689,6 +689,33 @@ export async function removeNoteFromCollection(
  * Storage keys recorded by a delete but not yet removed from object storage.
  * Surfaced by `pnpm storage:orphans` so leftovers stay visible until Forge exposes a delete.
  */
+/**
+ * Whether this storage key belongs to a note version in the user's own workspace.
+ *
+ * The storage proxy previously signed any key it was handed, with no authentication and no
+ * ownership check: knowing a path — from a shared link, a log line, an old screenshot — was
+ * enough to download someone else's unpublished research notes indefinitely, because the
+ * proxy would mint a fresh signed URL each time.
+ */
+export async function userOwnsStorageKey(
+  userId: number,
+  storageKey: string
+): Promise<boolean> {
+  const { db, workspace } = await getOrCreateWorkspace(userId);
+  const rows = await db
+    .select({ id: researchNoteVersions.id })
+    .from(researchNoteVersions)
+    .innerJoin(researchNotes, eq(researchNoteVersions.noteId, researchNotes.id))
+    .where(
+      and(
+        eq(researchNoteVersions.rawStorageKey, storageKey),
+        eq(researchNotes.workspaceId, workspace.id)
+      )
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function listUnpurgedStorageObjects(limit = 200) {
   const db = await requireDb();
   return db

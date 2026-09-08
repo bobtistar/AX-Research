@@ -61,6 +61,14 @@ export type Tally = Record<CellOutcome, number> & {
 
 export type EvalMetrics = {
   tally: Tally;
+  /** Cases whose model call or parsing failed. They contribute no cells. */
+  failedCases: number;
+  /**
+   * False when nothing could be scored — every case failed, or the gold set is empty.
+   * A score computed from zero cells is 1.0, which reads as perfect; a prompt that makes
+   * the model fail more often would score as an improvement.
+   */
+  scorable: boolean;
   /** Absent cells the model invented an answer for, over all cells. */
   fabricationRate: number;
   /** Supported cells filed under the paired section, over all cells. */
@@ -186,6 +194,7 @@ const EMPTY_TALLY: Tally = {
  */
 export function aggregate(cases: readonly CaseScore[]): EvalMetrics {
   const tally: Tally = { ...EMPTY_TALLY };
+  const failedCases = cases.filter(item => item.error).length;
   for (const item of cases) {
     for (const cell of item.cells) {
       tally[cell.outcome] += 1;
@@ -198,13 +207,21 @@ export function aggregate(cases: readonly CaseScore[]): EvalMetrics {
   const confusionRate = tally.CONFUSED / total;
   const missRate = (tally.MISSED + tally.MISQUOTED + tally.UNCOVERED) / total;
   const absentJudged = tally.CORRECT_ABSENT + tally.FABRICATED;
+  // A failed case scores nothing, so a run with no scorable cells is reported as
+  // unscorable rather than perfect. Otherwise the cheapest way to raise the score is a
+  // prompt that makes the model fail — losses vanish with the cells that carried them.
+  const scorable = tally.scored > 0;
   return {
     tally,
+    failedCases,
+    scorable,
     fabricationRate,
     confusionRate,
     missRate,
     missingAccuracy: absentJudged ? tally.CORRECT_ABSENT / absentJudged : 1,
-    score: 1 - (2 * fabricationRate + confusionRate + 0.5 * missRate),
+    score: scorable
+      ? 1 - (2 * fabricationRate + confusionRate + 0.5 * missRate)
+      : Number.NaN,
   };
 }
 

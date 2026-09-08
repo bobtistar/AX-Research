@@ -184,6 +184,12 @@ async function runOnce(
 function report(metrics: EvalMetrics, label: string) {
   const { tally } = metrics;
   console.log(`\n${label}`);
+  if (!metrics.scorable) {
+    console.log(
+      `  score            평가 불가 — 채점 가능한 cell이 없습니다 (실패 ${metrics.failedCases}건)`
+    );
+    return;
+  }
   console.log(`  score            ${metrics.score.toFixed(4)}`);
   console.log(`  환각률           ${metrics.fabricationRate.toFixed(4)}`);
   console.log(`  section 혼동률   ${metrics.confusionRate.toFixed(4)}`);

@@ -210,3 +210,44 @@ describe("noise measurement", () => {
     expect(stdev([0.7, 0.8, 0.9])).toBeCloseTo(0.1, 10);
   });
 });
+
+describe("an unscorable run", () => {
+  const failed = {
+    caseId: "c",
+    resolvedSections: [],
+    cells: [],
+    error: "boom",
+  };
+
+  it("reports no score when every case failed", () => {
+    // Losses vanish with the cells that carried them, so the formula returns 1.0 from zero
+    // cells — making "the model failed on everything" the highest-scoring outcome and a
+    // prompt that breaks parsing look like an improvement.
+    const metrics = aggregate([failed, { ...failed, caseId: "d" }]);
+    expect(metrics.scorable).toBe(false);
+    expect(Number.isNaN(metrics.score)).toBe(true);
+    expect(metrics.failedCases).toBe(2);
+  });
+
+  it("still scores a run where some cases succeeded, and counts the failures", () => {
+    const metrics = aggregate([
+      failed,
+      {
+        caseId: "e",
+        resolvedSections: [],
+        cells: [
+          {
+            noteId: "n",
+            sectionType: "CLAIM" as const,
+            label: "SUPPORTED" as const,
+            source: "APPROVED_CLAIM" as const,
+            outcome: "MATCHED" as never,
+          },
+        ],
+      },
+    ]);
+    expect(metrics.scorable).toBe(true);
+    expect(metrics.score).toBe(1);
+    expect(metrics.failedCases).toBe(1);
+  });
+});

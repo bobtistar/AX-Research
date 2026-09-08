@@ -40,7 +40,24 @@ export function registerOAuthRoutes(app: Express) {
     const error = getQueryParam(req, "error");
 
     if (error) {
-      res.status(400).send(`로그인이 취소되었습니다: ${error}`);
+      // Google's codes are opaque to a non-developer, and each has a different fix in a
+      // different console. Naming the fix is the difference between a dead end and a
+      // one-minute correction.
+      const explanations: Record<string, string> = {
+        access_denied:
+          "로그인이 취소되었거나, 이 계정이 아직 허용되지 않았습니다. Google Cloud → OAuth 동의 화면 → 테스트 사용자에 이 이메일이 있는지 확인하세요.",
+        admin_policy_enforced:
+          "조직 정책이 이 앱의 접근을 막고 있습니다. 개인 Google 계정으로 시도해 보세요.",
+        redirect_uri_mismatch:
+          "리디렉션 주소가 Google에 등록된 값과 다릅니다. Google Cloud → 사용자 인증 정보의 주소가 이 앱의 /api/oauth/callback 과 정확히 같은지 확인하세요.",
+        invalid_client:
+          "GOOGLE_CLIENT_ID 또는 GOOGLE_CLIENT_SECRET 이 올바르지 않습니다.",
+      };
+      res
+        .status(400)
+        .send(
+          `로그인을 완료하지 못했습니다 (${error}).\n\n${explanations[error] ?? "Google이 요청을 거부했습니다."}`
+        );
       return;
     }
     if (!code || !state) {
@@ -74,7 +91,7 @@ export function registerOAuthRoutes(app: Express) {
         res
           .status(403)
           .send(
-            "이 앱에 접근이 허용된 계정이 아닙니다. 관리자에게 문의하세요."
+            `이 앱에 접근이 허용된 계정이 아닙니다: ${profile.email}\n\nRailway의 ALLOWED_EMAILS 에 이 주소를 추가하거나, 허용된 계정으로 다시 로그인하세요.`
           );
         return;
       }
